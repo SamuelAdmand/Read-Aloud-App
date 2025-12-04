@@ -2,20 +2,31 @@ package com.samuel.readaloud.ui.home
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.material3.Button
-import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.DropdownMenuItem
-import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.ExposedDropdownMenuBox
-import androidx.compose.material3.ExposedDropdownMenuDefaults
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.FileOpen
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
+import androidx.compose.material3.FloatingActionButtonMenu
+import androidx.compose.material3.FloatingActionButtonMenuItem
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
+import androidx.compose.material3.ToggleFloatingActionButton
+import androidx.compose.material3.ToggleFloatingActionButtonDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -23,113 +34,142 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
-import com.samuel.readaloud.model.Voice
 
+@OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 fun HomeScreen(
     viewModel: HomeViewModel = viewModel()
 ) {
-    val context = LocalContext.current
+    var isFabMenuExpanded by remember { mutableStateOf(false) }
 
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(16.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.Center
-    ) {
-        Text(
-            text = "Read Aloud Test",
-            style = MaterialTheme.typography.headlineMedium
-        )
+    Scaffold(
+        floatingActionButton = {
+            FloatingActionButtonMenu(
+                expanded = isFabMenuExpanded,
+                button = {
+                    ToggleFloatingActionButton(
+                        checked = isFabMenuExpanded,
+                        onCheckedChange = { isFabMenuExpanded = it },
+                        containerSize = ToggleFloatingActionButtonDefaults.containerSize(65.dp),
+                        containerColor = if (isFabMenuExpanded) {
+                            ToggleFloatingActionButtonDefaults.containerColor(
+                                MaterialTheme.colorScheme.onPrimaryContainer,
+                                MaterialTheme.colorScheme.primaryContainer
+                            )
+                        } else {
+                            ToggleFloatingActionButtonDefaults.containerColor(
+                                MaterialTheme.colorScheme.primaryContainer,
+                                MaterialTheme.colorScheme.onPrimaryContainer
+                            )
+                        }
+                    ) {
+                        val icon = if (isFabMenuExpanded) Icons.Default.Close else Icons.Default.Add
+                        val iconColor = if (isFabMenuExpanded) {
+                            MaterialTheme.colorScheme.onPrimary
+                        } else {
+                            MaterialTheme.colorScheme.onPrimaryContainer
+                        }
 
-        Spacer(modifier = Modifier.height(32.dp))
+                        Icon(
+                            imageVector = icon,
+                            contentDescription = "Toggle Actions",
+                            tint = iconColor
+                        )
+                    }
+                }
+            ) {
+                // Option 1: Type Text
+                FloatingActionButtonMenuItem(
+                    onClick = {
+                        isFabMenuExpanded = false
+                        // TODO: Open Type Text Dialog
+                    },
+                    icon = { Icon(Icons.Default.Edit, contentDescription = null) },
+                    text = { Text("Type Text") }
+                )
 
-        // Voice Selection UI
-        if (viewModel.isLoadingVoices) {
-            CircularProgressIndicator()
-            Text("Loading voices...", style = MaterialTheme.typography.bodySmall)
-        } else {
-            VoiceDropdown(
-                voices = viewModel.voices,
-                selectedVoice = viewModel.selectedVoice,
-                onVoiceSelected = { viewModel.onVoiceSelected(it) }
-            )
+                // Option 2: Import File
+                FloatingActionButtonMenuItem(
+                    onClick = {
+                        isFabMenuExpanded = false
+                        // TODO: Open File Picker
+                    },
+                    icon = { Icon(Icons.Default.FileOpen, contentDescription = null) },
+                    text = { Text("Import File") }
+                )
+            }
         }
-
-        Spacer(modifier = Modifier.height(16.dp))
-
-        OutlinedTextField(
-            value = viewModel.textInput,
-            onValueChange = { viewModel.onTextChanged(it) },
-            label = { Text("Enter text to read") },
-            modifier = Modifier.fillMaxWidth(),
-            minLines = 3
-        )
-
-        Spacer(modifier = Modifier.height(16.dp))
-
-        Button(
-            onClick = { viewModel.speak(context.cacheDir) },
-            enabled = !viewModel.isGenerating && viewModel.selectedVoice != null,
-            modifier = Modifier.fillMaxWidth()
+    ) { innerPadding ->
+        Column(
+            modifier = Modifier
+                .padding(innerPadding)
+                .fillMaxSize()
         ) {
-            Text(if (viewModel.isGenerating) "Generating..." else "Play Audio")
+            // App Header
+            Text(
+                text = "Read Aloud",
+                style = MaterialTheme.typography.displaySmall,
+                modifier = Modifier.padding(start = 16.dp, top = 24.dp, bottom = 16.dp)
+            )
+
+            // Recently Played Section
+            Text(
+                text = "Recently Played",
+                style = MaterialTheme.typography.titleMedium,
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
+            )
+
+            // Placeholder List for Recent Items
+            LazyColumn(
+                contentPadding = PaddingValues(16.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                items(3) { index ->
+                    RecentItemCard(index)
+                }
+            }
         }
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun VoiceDropdown(
-    voices: List<Voice>,
-    selectedVoice: Voice?,
-    onVoiceSelected: (Voice) -> Unit
-) {
-    var expanded by remember { mutableStateOf(false) }
-
-    // We filter the list to show mostly English voices for this test to avoid a massive list
-    // You can remove the .take(50) later to show all
-    val displayVoices = remember(voices) {
-        voices.filter { it.locale.startsWith("en") }.take(50)
-            .ifEmpty { voices.take(50) } // Fallback if no English voices
-    }
-
-    ExposedDropdownMenuBox(
-        expanded = expanded,
-        onExpandedChange = { expanded = !expanded },
-        modifier = Modifier.fillMaxWidth()
+fun RecentItemCard(index: Int) {
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(80.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceContainer
+        ),
+        shape = MaterialTheme.shapes.medium
     ) {
-        OutlinedTextField(
-            value = selectedVoice?.shortName ?: "Select Voice",
-            onValueChange = {},
-            readOnly = true,
-            label = { Text("Voice") },
-            trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
-            colors = ExposedDropdownMenuDefaults.outlinedTextFieldColors(),
+        Row(
             modifier = Modifier
-                .menuAnchor()
-                .fillMaxWidth()
-        )
-        ExposedDropdownMenu(
-            expanded = expanded,
-            onDismissRequest = { expanded = false }
+                .fillMaxSize()
+                .padding(16.dp),
+            verticalAlignment = Alignment.CenterVertically
         ) {
-            displayVoices.forEach { voice ->
-                DropdownMenuItem(
-                    text = {
-                        Column {
-                            Text(text = voice.shortName, style = MaterialTheme.typography.bodyMedium)
-                            Text(text = "${voice.gender} - ${voice.locale}", style = MaterialTheme.typography.labelSmall)
-                        }
-                    },
-                    onClick = {
-                        onVoiceSelected(voice)
-                        expanded = false
-                    }
+            // Placeholder for icon/image
+            Card(
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer),
+                modifier = Modifier
+                    .height(48.dp)
+                    .width(48.dp)
+            ) {}
+
+            Spacer(modifier = Modifier.width(16.dp))
+
+            Column {
+                Text(
+                    text = "Article Title ${index + 1}",
+                    style = MaterialTheme.typography.titleMedium
+                )
+                Text(
+                    text = "5 min read • Just now",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
         }
