@@ -40,7 +40,8 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 @OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 fun HomeScreen(
-    viewModel: HomeViewModel = viewModel()
+    viewModel: HomeViewModel = viewModel(),
+    onTypeTextClick: () -> Unit
 ) {
     var isFabMenuExpanded by remember { mutableStateOf(false) }
 
@@ -84,6 +85,7 @@ fun HomeScreen(
                 FloatingActionButtonMenuItem(
                     onClick = {
                         isFabMenuExpanded = false
+                        onTypeTextClick()
                         // TODO: Open Type Text Dialog
                     },
                     icon = { Icon(Icons.Default.Edit, contentDescription = null) },

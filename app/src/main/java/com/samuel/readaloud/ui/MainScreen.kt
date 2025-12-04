@@ -23,17 +23,16 @@ import androidx.navigation.compose.rememberNavController
 import com.samuel.readaloud.ui.home.HomeScreen
 import com.samuel.readaloud.ui.library.LibraryScreen
 import com.samuel.readaloud.ui.more.MoreScreen
+import com.samuel.readaloud.ui.type.TypeScreen
 
 @Composable
 fun MainScreen() {
     val navController = rememberNavController()
 
-    // We explicitly define the data class or structure to hold navigation items
     data class NavItem(val label: String, val icon: ImageVector, val route: String)
 
     val navItems = listOf(
         NavItem("Home", Icons.Filled.Home, "home"),
-        // We use Icons.Filled.List here. If it conflicts, use Icons.Filled.Menu or similar
         NavItem("Library", Icons.Filled.List, "library"),
         NavItem("More", Icons.Filled.Settings, "more")
     )
@@ -68,9 +67,22 @@ fun MainScreen() {
             startDestination = "home",
             modifier = Modifier.padding(innerPadding)
         ) {
-            composable("home") { HomeScreen() }
+            // Updated HomeScreen call with the required callback
+            composable("home") {
+                HomeScreen(
+                    onTypeTextClick = { navController.navigate("type_text") }
+                )
+            }
+
             composable("library") { LibraryScreen() }
             composable("more") { MoreScreen() }
+
+            // New Route for Type Screen
+            composable("type_text") {
+                TypeScreen(
+                    onBackClick = { navController.popBackStack() }
+                )
+            }
         }
     }
 }
