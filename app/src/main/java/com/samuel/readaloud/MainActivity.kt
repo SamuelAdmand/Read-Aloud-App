@@ -16,6 +16,7 @@ import android.util.Log
 import androidx.lifecycle.lifecycleScope
 import com.chaquo.python.Python
 import com.chaquo.python.android.AndroidPlatform
+import com.samuel.readaloud.ui.home.HomeScreen
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 
@@ -44,10 +45,12 @@ class MainActivity : ComponentActivity() {
         setContent {
             ReadAloudTheme {
                 Scaffold(modifier = Modifier.fillMaxSize()) { innerPadding ->
-                    Greeting(
-                        name = "Android",
+                    // We pass the modifier to respect the scaffold padding (status bars, etc)
+                    androidx.compose.foundation.layout.Box(
                         modifier = Modifier.padding(innerPadding)
-                    )
+                    ) {
+                        HomeScreen()
+                    }
                 }
             }
         }
