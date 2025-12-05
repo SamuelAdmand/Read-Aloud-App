@@ -1,47 +1,59 @@
 package com.samuel.readaloud.domain
 
-import java.text.BreakIterator
-import java.util.Locale
-
 object TextChunker {
 
     /**
-     * Splits a long string into chunks, where each chunk contains roughly [batchSize] sentences.
+     * Splits text into chunks to optimize for low-latency TTS.
+     *
+     * Strategy:
+     * 1. **Fast Start**: The first chunk is small (~15 words) to start playback immediately.
+     * 2. **Stable Buffer**: Subsequent chunks are larger (~60 words) for efficiency.
+     * 3. **Smart Snap**: Breaks occur at natural punctuation boundaries (., !, ?, ;, :) to preserve intonation.
      */
-    fun chunkText(text: String, locale: Locale = Locale.US, batchSize: Int = 5): List<String> {
-        val iterator = BreakIterator.getSentenceInstance(locale)
-        iterator.setText(text)
-
+    fun chunkText(text: String): List<String> {
         val chunks = mutableListOf<String>()
-        val currentChunk = StringBuilder()
-        var sentenceCount = 0
 
-        var start = iterator.first()
-        var end = iterator.next()
+        // 1. Split by whitespace to get tokens
+        val tokens = text.trim().split(Regex("\\s+"))
+        if (tokens.isEmpty() || text.isBlank()) return emptyList()
 
-        while (end != BreakIterator.DONE) {
-            val sentence = text.substring(start, end)
+        var currentChunk = StringBuilder()
+        var currentWordCount = 0
 
-            // Filter out empty or whitespace-only "sentences" that BreakIterator might catch
-            if (sentence.isNotBlank()) {
-                currentChunk.append(sentence)
-                sentenceCount++
-            }
+        // Dynamic target: Start with 15 words for low latency, then switch to 60
+        var targetWordCount = 15
+        val stableWordCount = 60
 
-            // If we hit the batch size, push to list and reset
-            if (sentenceCount >= batchSize) {
-                chunks.add(currentChunk.toString())
+        // Safety limit: If no punctuation is found for a long time, force a break
+        val maxWordCount = 100
+
+        for (token in tokens) {
+            currentChunk.append(token).append(" ")
+            currentWordCount++
+
+            // Check if token ends with a sentence or phrase terminator
+            // Matches: . , ! ? ; : " ] )
+            val endsWithPunctuation = token.matches(Regex(".*[.!?,;:\")\\]]$"))
+
+            // Decision to break chunk
+            val shouldBreak = (currentWordCount >= targetWordCount && endsWithPunctuation) ||
+                    (currentWordCount >= maxWordCount)
+
+            if (shouldBreak) {
+                chunks.add(currentChunk.toString().trim())
+
+                // Reset for next chunk
                 currentChunk.clear()
-                sentenceCount = 0
-            }
+                currentWordCount = 0
 
-            start = end
-            end = iterator.next()
+                // Switch to larger chunks after the first one to reduce overhead
+                targetWordCount = stableWordCount
+            }
         }
 
         // Add any remaining text
         if (currentChunk.isNotEmpty()) {
-            chunks.add(currentChunk.toString())
+            chunks.add(currentChunk.toString().trim())
         }
 
         return chunks
