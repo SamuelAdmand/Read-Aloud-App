@@ -1,4 +1,4 @@
-package com.samuel.readaloud.ui.type
+package com.samuel.readaloud.ui.more
 
 import android.app.Application
 import androidx.compose.runtime.getValue
@@ -6,52 +6,33 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
-import com.samuel.readaloud.domain.TtsManager
+import com.samuel.readaloud.data.local.PreferenceManager
 import com.samuel.readaloud.model.Voice
 import com.samuel.readaloud.repository.TtsRepository
 import com.samuel.readaloud.ui.components.VoiceGroup
-import kotlinx.coroutines.flow.SharingStarted
-import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import java.util.Locale
 
-class TypeViewModel(application: Application) : AndroidViewModel(application) {
+class SettingsViewModel(application: Application) : AndroidViewModel(application) {
 
     private val repository = TtsRepository()
-    private val ttsManager = TtsManager(application, repository)
-    private val preferenceManager = com.samuel.readaloud.data.local.PreferenceManager(application)
-    // UI State
-    var textInput by mutableStateOf("")
+    private val preferenceManager = PreferenceManager(application)
+
+    // --- State ---
+    var defaultVoiceName by mutableStateOf(preferenceManager.voiceName)
         private set
 
-    var isPlayerVisible by mutableStateOf(false)
+    var defaultSpeed by mutableStateOf(preferenceManager.playbackSpeed)
         private set
 
-    val isPlaying: StateFlow<Boolean> = ttsManager.isPlaying
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)
-
-    val isLoading: StateFlow<Boolean> = ttsManager.isLoading
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)
-
-    // --- Voice & Playback State ---
-    var selectedVoiceName by mutableStateOf("Aria (US)")
-    private var selectedVoiceId = "en-US-AriaNeural"
-
-    var playbackSpeed by mutableStateOf(1.0f)
-        private set
-
-    // --- Voice Selection UI State ---
+    // --- Voice Selection Data ---
     private val _allVoices = mutableListOf<Voice>()
-
-    // Map: Language Name -> VoiceGroup (either Single or Multi Region)
     var groupedVoices by mutableStateOf<Map<String, VoiceGroup>>(emptyMap())
         private set
 
     var searchQuery by mutableStateOf("")
         private set
 
-    // Set of pinned Locale Strings
     var pinnedRegions by mutableStateOf<Set<String>>(emptySet())
         private set
 
@@ -72,6 +53,7 @@ class TypeViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    // Duplicate grouping logic from TypeViewModel to ensure consistent UI
     private fun updateGroupedVoices() {
         val filtered = if (searchQuery.isBlank()) {
             _allVoices
@@ -83,21 +65,14 @@ class TypeViewModel(application: Application) : AndroidViewModel(application) {
             }
         }
 
-        // 1. Group by Language
         val byLanguage = filtered.groupBy { getLanguageName(it.locale) }
 
-        // 2. Process each language group
         val processedGroups = byLanguage.mapValues { (_, voicesInLang) ->
-            // Group by Region within this language
             val byRegion = voicesInLang.groupBy { getRegionName(it.locale) }
 
             if (byRegion.size == 1) {
-                // Case A: Only one region (e.g., Hindi -> India)
-                // Return just the list of voices directly
                 VoiceGroup.SingleRegion(voicesInLang)
             } else {
-                // Case B: Multiple regions (e.g., English -> US, UK, India)
-                // Sort regions (Pinned first, then Alphabetical)
                 val sortedRegions = byRegion.toSortedMap(compareBy { regionName ->
                     val sampleVoice = byRegion[regionName]?.firstOrNull()
                     val localeCode = sampleVoice?.locale ?: ""
@@ -112,26 +87,6 @@ class TypeViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     // --- Actions ---
-
-    fun onTextChanged(newText: String) {
-        textInput = newText
-    }
-
-    fun onConfirmText() {
-        if (textInput.isBlank()) return
-        isPlayerVisible = true
-        ttsManager.playText(textInput, selectedVoiceId)
-        ttsManager.setPlaybackSpeed(playbackSpeed)
-    }
-
-    fun onEditClicked() {
-        ttsManager.stop()
-        isPlayerVisible = false
-    }
-
-    fun onPlayPauseClicked() {
-        ttsManager.togglePlayPause()
-    }
 
     fun onSearchQueryChanged(query: String) {
         searchQuery = query
@@ -148,30 +103,21 @@ class TypeViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun onVoiceSelected(voice: Voice) {
-        selectedVoiceId = voice.shortName
-        selectedVoiceName = voice.name
-
-        if (isPlayerVisible) {
-            ttsManager.stop()
-            ttsManager.playText(textInput, selectedVoiceId)
-            ttsManager.setPlaybackSpeed(playbackSpeed)
-        }
+        // Update State
+        defaultVoiceName = voice.name
+        // Save to Prefs
+        preferenceManager.voiceId = voice.shortName
+        preferenceManager.voiceName = voice.name
     }
 
     fun onSpeedChanged(newSpeed: Float) {
-        playbackSpeed = newSpeed
+        // Update State
+        defaultSpeed = newSpeed
+        // Save to Prefs
+        preferenceManager.playbackSpeed = newSpeed
+    }
 
-        ttsManager.setPlaybackSpeed(newSpeed)
-    }
-    fun loadDefaultSettings() {
-        // Only reload if we are not currently in the middle of a session (optional,
-        // but here we force reload to satisfy "Start with settings saved")
-        selectedVoiceName = preferenceManager.voiceName
-        selectedVoiceId = preferenceManager.voiceId
-        playbackSpeed = preferenceManager.playbackSpeed
-    }
     // --- Helpers ---
-
     private fun getLanguageName(localeString: String): String {
         return try {
             Locale.forLanguageTag(localeString).displayLanguage.ifBlank { "Unknown Language" }
