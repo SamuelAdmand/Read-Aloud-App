@@ -34,6 +34,7 @@ class TtsRepository {
             Result.failure(e)
         }
     }
+
     private fun parseVoices(jsonString: String): List<Voice> {
         val voiceList = mutableListOf<Voice>()
         try {
@@ -41,6 +42,7 @@ class TtsRepository {
             for (i in 0 until jsonArray.length()) {
                 val obj = jsonArray.getJSONObject(i)
 
+                // 1. Extract ShortName (e.g., "en-US-AriaNeural")
                 val shortName = obj.optString("ShortName").takeIf { it.isNotBlank() }
                     ?: obj.optString("Name").takeIf { it.isNotBlank() }
                     ?: ""
@@ -49,11 +51,8 @@ class TtsRepository {
                 val locale = obj.optString("Locale").ifBlank { "Unknown" }
 
                 if (shortName.isNotBlank()) {
-                    // Extract clean name from ShortName (e.g., "en-US-AriaNeural" -> "Aria (Neural)")
-                    // 1. Get the last part after dashes: "AriaNeural"
+                    // 2. Generate a clean name (e.g., "Aria (Neural)")
                     val namePart = shortName.split("-").lastOrNull() ?: shortName
-
-                    // 2. Insert space before "Neural" or just use the name
                     val cleanName = if (namePart.endsWith("Neural")) {
                         namePart.replace("Neural", " (Neural)")
                     } else {
@@ -62,7 +61,7 @@ class TtsRepository {
 
                     voiceList.add(
                         Voice(
-                            name = cleanName, // Now stores "Aria (Neural)"
+                            name = cleanName, // Clean name for UI
                             shortName = shortName,
                             gender = gender,
                             locale = locale

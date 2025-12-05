@@ -7,14 +7,19 @@ import androidx.compose.runtime.setValue
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.samuel.readaloud.domain.TtsManager
+import com.samuel.readaloud.model.Voice
 import com.samuel.readaloud.repository.TtsRepository
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
-import kotlin.collections.filter
 import java.util.Locale
-import com.samuel.readaloud.model.Voice
+
+// Sealed interface for grouping logic
+sealed interface VoiceGroup {
+    data class SingleRegion(val voices: List<Voice>) : VoiceGroup
+    data class MultiRegion(val regions: Map<String, List<Voice>>) : VoiceGroup
+}
 
 class TypeViewModel(application: Application) : AndroidViewModel(application) {
 
@@ -25,12 +30,12 @@ class TypeViewModel(application: Application) : AndroidViewModel(application) {
     var textInput by mutableStateOf("")
         private set
 
-    // NEW: Controls visibility of the player. False = Editing, True = Playing
     var isPlayerVisible by mutableStateOf(false)
         private set
 
     val isPlaying: StateFlow<Boolean> = ttsManager.isPlaying
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)
+
     val isLoading: StateFlow<Boolean> = ttsManager.isLoading
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)
 
@@ -44,15 +49,15 @@ class TypeViewModel(application: Application) : AndroidViewModel(application) {
     // --- Voice Selection UI State ---
     private val _allVoices = mutableListOf<Voice>()
 
-    // Map of Country Name -> List of Voices
-    var groupedVoices by mutableStateOf<Map<String, List<Voice>>>(emptyMap())
+    // Map: Language Name -> VoiceGroup (either Single or Multi Region)
+    var groupedVoices by mutableStateOf<Map<String, VoiceGroup>>(emptyMap())
         private set
 
     var searchQuery by mutableStateOf("")
         private set
 
-    // List of pinned country names
-    var pinnedCountries by mutableStateOf<Set<String>>(emptySet())
+    // Set of pinned Locale Strings
+    var pinnedRegions by mutableStateOf<Set<String>>(emptySet())
         private set
 
     init {
@@ -78,46 +83,53 @@ class TypeViewModel(application: Application) : AndroidViewModel(application) {
         } else {
             _allVoices.filter {
                 it.name.contains(searchQuery, ignoreCase = true) ||
-                        getCountryName(it.locale).contains(searchQuery, ignoreCase = true)
+                        getLanguageName(it.locale).contains(searchQuery, ignoreCase = true) ||
+                        getRegionName(it.locale).contains(searchQuery, ignoreCase = true)
             }
         }
 
-        // Group by Country
-        val grouped = filtered.groupBy { getCountryName(it.locale) }
+        // 1. Group by Language
+        val byLanguage = filtered.groupBy { getLanguageName(it.locale) }
 
-        // Sort: Pinned first (Alphabetical), then others (Alphabetical)
-        groupedVoices = grouped.toSortedMap(compareBy { country ->
-            val isPinned = pinnedCountries.contains(country)
-            if (isPinned) "0_$country" else "1_$country"
-        })
+        // 2. Process each language group
+        val processedGroups = byLanguage.mapValues { (_, voicesInLang) ->
+            // Group by Region within this language
+            val byRegion = voicesInLang.groupBy { getRegionName(it.locale) }
+
+            if (byRegion.size == 1) {
+                // Case A: Only one region (e.g., Hindi -> India)
+                // Return just the list of voices directly
+                VoiceGroup.SingleRegion(voicesInLang)
+            } else {
+                // Case B: Multiple regions (e.g., English -> US, UK, India)
+                // Sort regions (Pinned first, then Alphabetical)
+                val sortedRegions = byRegion.toSortedMap(compareBy { regionName ->
+                    val sampleVoice = byRegion[regionName]?.firstOrNull()
+                    val localeCode = sampleVoice?.locale ?: ""
+                    val isPinned = pinnedRegions.contains(localeCode)
+                    if (isPinned) "0_$regionName" else "1_$regionName"
+                })
+                VoiceGroup.MultiRegion(sortedRegions)
+            }
+        }.toSortedMap()
+
+        groupedVoices = processedGroups
     }
 
-    // --- Helper Functions ---
+    // --- Actions ---
 
-    private fun getCountryName(localeString: String): String {
-        return try {
-            val locale = Locale.forLanguageTag(localeString)
-            locale.displayCountry.ifBlank { "Unknown Region" }
-        } catch (e: Exception) {
-            "Unknown Region"
-        }
-    }
     fun onTextChanged(newText: String) {
         textInput = newText
     }
-    // Called when the "Tick" FAB is clicked
+
     fun onConfirmText() {
         if (textInput.isBlank()) return
-
         isPlayerVisible = true
-        // Start playback immediately from the beginning
         ttsManager.playText(textInput, selectedVoiceId)
-        // Ensure speed is applied
         ttsManager.setPlaybackSpeed(playbackSpeed)
     }
 
     fun onEditClicked() {
-        // Stop playback because editing text invalidates the current audio
         ttsManager.stop()
         isPlayerVisible = false
     }
@@ -126,36 +138,27 @@ class TypeViewModel(application: Application) : AndroidViewModel(application) {
         ttsManager.togglePlayPause()
     }
 
-    override fun onCleared() {
-        super.onCleared()
-        ttsManager.stop()
-    }
-
     fun onSearchQueryChanged(query: String) {
         searchQuery = query
         updateGroupedVoices()
     }
 
-    fun toggleCountryPin(country: String) {
-        pinnedCountries = if (pinnedCountries.contains(country)) {
-            pinnedCountries - country
+    fun toggleRegionPin(locale: String) {
+        pinnedRegions = if (pinnedRegions.contains(locale)) {
+            pinnedRegions - locale
         } else {
-            pinnedCountries + country
+            pinnedRegions + locale
         }
         updateGroupedVoices()
     }
 
     fun onVoiceSelected(voice: Voice) {
         selectedVoiceId = voice.shortName
-        selectedVoiceName = voice.name // The name is now clean from Repository
+        selectedVoiceName = voice.name
 
-        // Instant restart if player is visible/active
         if (isPlayerVisible) {
-            // Stop current playback
             ttsManager.stop()
-            // Restart immediately with new voice
             ttsManager.playText(textInput, selectedVoiceId)
-            // Ensure speed is maintained
             ttsManager.setPlaybackSpeed(playbackSpeed)
         }
     }
@@ -163,5 +166,19 @@ class TypeViewModel(application: Application) : AndroidViewModel(application) {
     fun onSpeedChanged(newSpeed: Float) {
         playbackSpeed = newSpeed
         ttsManager.setPlaybackSpeed(newSpeed)
+    }
+
+    // --- Helpers ---
+
+    private fun getLanguageName(localeString: String): String {
+        return try {
+            Locale.forLanguageTag(localeString).displayLanguage.ifBlank { "Unknown Language" }
+        } catch (e: Exception) { "Unknown" }
+    }
+
+    private fun getRegionName(localeString: String): String {
+        return try {
+            Locale.forLanguageTag(localeString).displayCountry.ifBlank { "Global" }
+        } catch (e: Exception) { "Global" }
     }
 }
