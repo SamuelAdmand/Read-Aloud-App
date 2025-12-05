@@ -40,10 +40,6 @@ class TtsManager(
     private val _currentTitle = MutableStateFlow("")
     val currentTitle = _currentTitle.asStateFlow()
 
-    // Progress (0.0 to 1.0 based on chunk index)
-    private val _progress = MutableStateFlow(0f)
-    val progress = _progress.asStateFlow()
-
     // Speed State
     private var currentSpeed: Float = 1.0f
 
@@ -78,9 +74,6 @@ class TtsManager(
         }
 
         scope.launch {
-            // Update progress
-            _progress.value = currentChunkIndex.toFloat() / chunks.size.toFloat()
-
             // Step A: Ensure current chunk is ready
             val currentFile = getOrFetchChunk(currentChunkIndex)
 
@@ -167,6 +160,5 @@ class TtsManager(
         _isPlaying.value = false
         cachedFiles.clear() // Clear memory cache reference (files still in cacheDir)
         currentChunkIndex = 0
-        _progress.value = 0f
     }
 }

@@ -39,14 +39,32 @@ class TtsRepository {
         val voiceList = mutableListOf<Voice>()
         try {
             val jsonArray = JSONArray(jsonString)
+            // Log the first object to see what keys we actually get
+            if (jsonArray.length() > 0) {
+                android.util.Log.d("TtsRepository", "Sample Voice JSON: " + jsonArray.getJSONObject(0).toString())
+            }
+
             for (i in 0 until jsonArray.length()) {
                 val obj = jsonArray.getJSONObject(i)
+
+                // Try different common keys for Name
+                val name = obj.optString("FriendlyName").ifBlank {
+                    obj.optString("Name").ifBlank { "Unknown Voice" }
+                }
+
+                val shortName = obj.optString("ShortName").ifBlank {
+                    obj.optString("Name") // Fallback
+                }
+
+                val gender = obj.optString("Gender").ifBlank { "Unknown" }
+                val locale = obj.optString("Locale").ifBlank { "Unknown" }
+
                 voiceList.add(
                     Voice(
-                        name = obj.optString("FriendlyName", "Unknown"),
-                        shortName = obj.getString("ShortName"),
-                        gender = obj.optString("Gender", "Unknown"),
-                        locale = obj.optString("Locale", "Unknown")
+                        name = name,
+                        shortName = shortName,
+                        gender = gender,
+                        locale = locale
                     )
                 )
             }

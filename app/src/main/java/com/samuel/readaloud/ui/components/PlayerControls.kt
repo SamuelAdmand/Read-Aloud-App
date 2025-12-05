@@ -1,5 +1,6 @@
 package com.samuel.readaloud.ui.components
 
+import android.R.attr.progress
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -30,6 +31,10 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -54,7 +59,7 @@ fun PlayerControls(
 ) {
     Card(
         modifier = modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(24.dp), // Rounded all around like the reference
+        shape = RoundedCornerShape(24.dp),
         colors = CardDefaults.cardColors(
             containerColor = MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = 0.6f)
         ),
@@ -128,33 +133,21 @@ fun PlayerControls(
                             )
                             Spacer(modifier = Modifier.width(4.dp))
                             Text(
-                                text = voiceName, // e.g. "Aria (US)"
+                                text = voiceName,
                                 style = MaterialTheme.typography.labelMedium,
                                 color = MaterialTheme.colorScheme.onPrimaryContainer,
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis,
-                                modifier = Modifier.width(80.dp) // Constrain width
+                                modifier = Modifier.width(80.dp)
                             )
                         }
                     }
                 }
             }
 
-            Spacer(modifier = Modifier.height(12.dp))
+            Spacer(modifier = Modifier.height(20.dp))
 
-            // 2. Progress Slider
-            // Using a custom track/thumb height if possible, or standard for now
-            Slider(
-                value = 0.3f, // TODO: Bind to real progress
-                onValueChange = { /* Seek logic later */ },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(20.dp) // Compact height
-            )
-
-            Spacer(modifier = Modifier.height(4.dp))
-
-            // 3. Playback Controls
+            // 2. Playback Controls
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceEvenly,
@@ -211,7 +204,7 @@ fun PreviewPlayerControls() {
                 onNextSection = {},
                 onPrevSection = {},
                 onSpeedClick = {},
-                onVoiceClick = {}
+                onVoiceClick = {},
             )
         }
     }

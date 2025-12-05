@@ -73,7 +73,6 @@ fun TypeScreen(
 ) {
     val isPlaying by viewModel.isPlaying.collectAsState()
     val focusManager = LocalFocusManager.current
-
     // Dialog States
     var showVoiceDialog by remember { mutableStateOf(false) }
     var showSpeedDialog by remember { mutableStateOf(false) }

@@ -14,7 +14,6 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import kotlin.collections.filter
 import java.util.Locale
-import kotlinx.coroutines.launch
 import com.samuel.readaloud.model.Voice
 
 class TypeViewModel(application: Application) : AndroidViewModel(application) {
@@ -33,8 +32,6 @@ class TypeViewModel(application: Application) : AndroidViewModel(application) {
     val isPlaying: StateFlow<Boolean> = ttsManager.isPlaying
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)
 
-    val progress: StateFlow<Float> = ttsManager.progress
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0f)
 
     // --- Voice & Playback State ---
     var selectedVoiceName by mutableStateOf("Aria (US)")
@@ -126,11 +123,6 @@ class TypeViewModel(application: Application) : AndroidViewModel(application) {
 
     fun onPlayPauseClicked() {
         ttsManager.togglePlayPause()
-    }
-
-    fun stopPlayback() {
-        ttsManager.stop()
-        isPlayerVisible = false
     }
 
     override fun onCleared() {
