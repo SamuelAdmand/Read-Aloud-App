@@ -11,6 +11,11 @@ import com.samuel.readaloud.repository.TtsRepository
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.launch
+import kotlin.collections.filter
+import java.util.Locale
+import kotlinx.coroutines.launch
+import com.samuel.readaloud.model.Voice
 
 class TypeViewModel(application: Application) : AndroidViewModel(application) {
 
@@ -31,13 +36,77 @@ class TypeViewModel(application: Application) : AndroidViewModel(application) {
     val progress: StateFlow<Float> = ttsManager.progress
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0f)
 
+    // --- Voice & Playback State ---
     var selectedVoiceName by mutableStateOf("Aria (US)")
     private var selectedVoiceId = "en-US-AriaNeural"
 
+    var playbackSpeed by mutableStateOf(1.0f)
+        private set
+
+    // --- Voice Selection UI State ---
+    private val _allVoices = mutableListOf<Voice>()
+
+    // Map of Country Name -> List of Voices
+    var groupedVoices by mutableStateOf<Map<String, List<Voice>>>(emptyMap())
+        private set
+
+    var searchQuery by mutableStateOf("")
+        private set
+
+    // List of pinned country names
+    var pinnedCountries by mutableStateOf<Set<String>>(emptySet())
+        private set
+
+    init {
+        loadVoices()
+    }
+
+    private fun loadVoices() {
+        viewModelScope.launch {
+            try {
+                val voices = repository.getVoices()
+                _allVoices.clear()
+                _allVoices.addAll(voices)
+                updateGroupedVoices()
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
+        }
+    }
+
+    private fun updateGroupedVoices() {
+        val filtered = if (searchQuery.isBlank()) {
+            _allVoices
+        } else {
+            _allVoices.filter {
+                it.name.contains(searchQuery, ignoreCase = true) ||
+                        getCountryName(it.locale).contains(searchQuery, ignoreCase = true)
+            }
+        }
+
+        // Group by Country
+        val grouped = filtered.groupBy { getCountryName(it.locale) }
+
+        // Sort: Pinned first (Alphabetical), then others (Alphabetical)
+        groupedVoices = grouped.toSortedMap(compareBy { country ->
+            val isPinned = pinnedCountries.contains(country)
+            if (isPinned) "0_$country" else "1_$country"
+        })
+    }
+
+    // --- Helper Functions ---
+
+    private fun getCountryName(localeString: String): String {
+        return try {
+            val locale = Locale.forLanguageTag(localeString)
+            locale.displayCountry.ifBlank { "Unknown Region" }
+        } catch (e: Exception) {
+            "Unknown Region"
+        }
+    }
     fun onTextChanged(newText: String) {
         textInput = newText
     }
-
     // Called when the "Tick" FAB is clicked
     fun onConfirmText() {
         if (textInput.isBlank()) return
@@ -45,6 +114,8 @@ class TypeViewModel(application: Application) : AndroidViewModel(application) {
         isPlayerVisible = true
         // Start playback immediately from the beginning
         ttsManager.playText(textInput, selectedVoiceId)
+        // Ensure speed is applied
+        ttsManager.setPlaybackSpeed(playbackSpeed)
     }
 
     fun onEditClicked() {
@@ -65,5 +136,34 @@ class TypeViewModel(application: Application) : AndroidViewModel(application) {
     override fun onCleared() {
         super.onCleared()
         ttsManager.stop()
+    }
+
+    fun onSearchQueryChanged(query: String) {
+        searchQuery = query
+        updateGroupedVoices()
+    }
+
+    fun toggleCountryPin(country: String) {
+        pinnedCountries = if (pinnedCountries.contains(country)) {
+            pinnedCountries - country
+        } else {
+            pinnedCountries + country
+        }
+        updateGroupedVoices()
+    }
+
+    fun onVoiceSelected(voice: Voice) {
+        selectedVoiceId = voice.shortName
+        // Extract a cleaner name for the UI, e.g., "Aria (Neural)"
+        val simpleName = voice.name.substringBefore(" -").removePrefix("Microsoft ")
+        selectedVoiceName = simpleName
+
+        // If player is visible, we might want to reload, but for now just update state
+        // The user will need to press play again or we can auto-trigger in future
+    }
+
+    fun onSpeedChanged(newSpeed: Float) {
+        playbackSpeed = newSpeed
+        ttsManager.setPlaybackSpeed(newSpeed)
     }
 }

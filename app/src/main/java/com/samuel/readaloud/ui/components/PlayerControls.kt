@@ -1,6 +1,9 @@
 package com.samuel.readaloud.ui.components
 
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -11,16 +14,12 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.rounded.FastForward
-import androidx.compose.material.icons.rounded.FastRewind
 import androidx.compose.material.icons.rounded.GraphicEq
 import androidx.compose.material.icons.rounded.Pause
 import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material.icons.rounded.SkipNext
 import androidx.compose.material.icons.rounded.SkipPrevious
 import androidx.compose.material.icons.rounded.Speed
-import androidx.compose.material3.AssistChip
-import androidx.compose.material3.AssistChipDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.FilledIconButton
@@ -33,10 +32,12 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 
 @Composable
 fun PlayerControls(
@@ -53,59 +54,125 @@ fun PlayerControls(
 ) {
     Card(
         modifier = modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp),
+        shape = RoundedCornerShape(24.dp), // Rounded all around like the reference
         colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceContainerHighest
+            containerColor = MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = 0.6f)
         ),
-        elevation = CardDefaults.cardElevation(defaultElevation = 8.dp)
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
     ) {
         Column(
             modifier = Modifier
-                .padding(24.dp)
+                .padding(horizontal = 20.dp, vertical = 16.dp)
                 .fillMaxWidth(),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            // 1. Title / Content Info
-            Text(
-                text = title,
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.Bold,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.padding(bottom = 8.dp)
-            )
+            // 1. Header Row: Title + Speed + Voice
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                // Title
+                Text(
+                    text = title,
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f)
+                )
 
-            // 2. Progress Slider (Placeholder for now)
+                // Controls Wrapper
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    // Speed Button
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(MaterialTheme.colorScheme.surfaceContainerHigh)
+                            .clickable(onClick = onSpeedClick)
+                            .padding(horizontal = 8.dp, vertical = 4.dp)
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(
+                                Icons.Rounded.Speed,
+                                contentDescription = "Speed",
+                                modifier = Modifier.size(14.dp),
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text(
+                                text = "${playbackSpeed}x",
+                                style = MaterialTheme.typography.labelMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+
+                    // Voice Button
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(MaterialTheme.colorScheme.primaryContainer)
+                            .clickable(onClick = onVoiceClick)
+                            .padding(horizontal = 8.dp, vertical = 4.dp)
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(
+                                Icons.Rounded.GraphicEq,
+                                contentDescription = "Voice",
+                                modifier = Modifier.size(14.dp),
+                                tint = MaterialTheme.colorScheme.onPrimaryContainer
+                            )
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text(
+                                text = voiceName, // e.g. "Aria (US)"
+                                style = MaterialTheme.typography.labelMedium,
+                                color = MaterialTheme.colorScheme.onPrimaryContainer,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                modifier = Modifier.width(80.dp) // Constrain width
+                            )
+                        }
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(12.dp))
+
+            // 2. Progress Slider
+            // Using a custom track/thumb height if possible, or standard for now
             Slider(
                 value = 0.3f, // TODO: Bind to real progress
                 onValueChange = { /* Seek logic later */ },
-                modifier = Modifier.fillMaxWidth()
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(20.dp) // Compact height
             )
 
-            Spacer(modifier = Modifier.height(8.dp))
+            Spacer(modifier = Modifier.height(4.dp))
 
-            // 3. Main Controls (Prev, Play/Pause, Next)
+            // 3. Playback Controls
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceEvenly,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                // Previous Section
-                IconButton(
-                    onClick = onPrevSection,
-                    modifier = Modifier.size(48.dp)
-                ) {
+                // Previous
+                IconButton(onClick = onPrevSection) {
                     Icon(
                         imageVector = Icons.Rounded.SkipPrevious,
-                        contentDescription = "Previous Section",
+                        contentDescription = "Previous",
                         modifier = Modifier.size(32.dp)
                     )
                 }
 
-                // Play/Pause (Prominent Button)
+                // Play/Pause
                 FilledIconButton(
                     onClick = onPlayPause,
-                    modifier = Modifier.size(72.dp),
+                    modifier = Modifier.size(64.dp),
                     colors = IconButtonDefaults.filledIconButtonColors(
                         containerColor = MaterialTheme.colorScheme.primary
                     )
@@ -113,68 +180,18 @@ fun PlayerControls(
                     Icon(
                         imageVector = if (isPlaying) Icons.Rounded.Pause else Icons.Rounded.PlayArrow,
                         contentDescription = if (isPlaying) "Pause" else "Play",
-                        modifier = Modifier.size(40.dp)
+                        modifier = Modifier.size(36.dp)
                     )
                 }
 
-                // Next Section
-                IconButton(
-                    onClick = onNextSection,
-                    modifier = Modifier.size(48.dp)
-                ) {
+                // Next
+                IconButton(onClick = onNextSection) {
                     Icon(
                         imageVector = Icons.Rounded.SkipNext,
-                        contentDescription = "Next Section",
+                        contentDescription = "Next",
                         modifier = Modifier.size(32.dp)
                     )
                 }
-            }
-
-            Spacer(modifier = Modifier.height(24.dp))
-
-            // 4. Secondary Controls (Speed & Voice)
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween
-            ) {
-                // Speed Control
-                AssistChip(
-                    onClick = onSpeedClick,
-                    label = { Text("${playbackSpeed}x") },
-                    leadingIcon = {
-                        Icon(
-                            Icons.Rounded.Speed,
-                            contentDescription = null,
-                            modifier = Modifier.size(18.dp)
-                        )
-                    },
-                    colors = AssistChipDefaults.assistChipColors(
-                        containerColor = MaterialTheme.colorScheme.surfaceContainer
-                    )
-                )
-
-                // Voice Control
-                AssistChip(
-                    onClick = onVoiceClick,
-                    label = {
-                        Text(
-                            text = voiceName,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                            modifier = Modifier.width(100.dp) // Limit width
-                        )
-                    },
-                    leadingIcon = {
-                        Icon(
-                            Icons.Rounded.GraphicEq,
-                            contentDescription = null,
-                            modifier = Modifier.size(18.dp)
-                        )
-                    },
-                    colors = AssistChipDefaults.assistChipColors(
-                        containerColor = MaterialTheme.colorScheme.surfaceContainer
-                    )
-                )
             }
         }
     }
@@ -184,16 +201,18 @@ fun PlayerControls(
 @Composable
 fun PreviewPlayerControls() {
     MaterialTheme {
-        PlayerControls(
-            title = "The Great Gatsby - Chapter 1",
-            isPlaying = true,
-            playbackSpeed = 1.25f,
-            voiceName = "Aria (Neural)",
-            onPlayPause = {},
-            onNextSection = {},
-            onPrevSection = {},
-            onSpeedClick = {},
-            onVoiceClick = {}
-        )
+        Box(modifier = Modifier.padding(16.dp)) {
+            PlayerControls(
+                title = "Typed Text",
+                isPlaying = true,
+                playbackSpeed = 1.0f,
+                voiceName = "Aria (US)",
+                onPlayPause = {},
+                onNextSection = {},
+                onPrevSection = {},
+                onSpeedClick = {},
+                onVoiceClick = {}
+            )
+        }
     }
 }

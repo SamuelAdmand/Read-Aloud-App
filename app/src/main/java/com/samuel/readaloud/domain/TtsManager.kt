@@ -44,6 +44,16 @@ class TtsManager(
     private val _progress = MutableStateFlow(0f)
     val progress = _progress.asStateFlow()
 
+    // Speed State
+    private var currentSpeed: Float = 1.0f
+
+    fun setPlaybackSpeed(speed: Float) {
+        currentSpeed = speed
+        if (mediaPlayer?.isPlaying == true) {
+            mediaPlayer?.playbackParams = mediaPlayer?.playbackParams?.setSpeed(speed) ?: android.media.PlaybackParams().setSpeed(speed)
+        }
+    }
+
     fun playText(text: String, voice: String) {
         stop() // Reset previous playback
 
@@ -115,6 +125,13 @@ class TtsManager(
             setDataSource(file.absolutePath)
             prepare()
 
+            // Apply current speed
+            try {
+                playbackParams = playbackParams.setSpeed(currentSpeed)
+            } catch (e: Exception) {
+                Log.e("TtsManager", "Failed to set speed", e)
+            }
+
             setOnCompletionListener {
                 // When finished, move to next chunk
                 currentChunkIndex++
@@ -132,6 +149,12 @@ class TtsManager(
                 it.pause()
                 _isPlaying.value = false
             } else {
+                // Re-apply speed just in case
+                try {
+                    it.playbackParams = it.playbackParams.setSpeed(currentSpeed)
+                } catch (e: Exception) {
+                    Log.e("TtsManager", "Failed to set speed on resume", e)
+                }
                 it.start()
                 _isPlaying.value = true
             }
