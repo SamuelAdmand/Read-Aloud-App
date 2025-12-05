@@ -36,7 +36,8 @@ class TtsManager(
     // UI State
     private val _isPlaying = MutableStateFlow(false)
     val isPlaying = _isPlaying.asStateFlow()
-
+    private val _isLoading = MutableStateFlow(false)
+    val isLoading = _isLoading.asStateFlow()
     private val _currentTitle = MutableStateFlow("")
     val currentTitle = _currentTitle.asStateFlow()
 
@@ -66,7 +67,6 @@ class TtsManager(
             processQueue()
         }
     }
-
     private fun processQueue() {
         if (currentChunkIndex >= chunks.size) {
             stop()
@@ -74,8 +74,11 @@ class TtsManager(
         }
 
         scope.launch {
+
             // Step A: Ensure current chunk is ready
+            _isLoading.value = true
             val currentFile = getOrFetchChunk(currentChunkIndex)
+            _isLoading.value = false
 
             if (currentFile != null) {
                 playFile(currentFile)
@@ -158,7 +161,8 @@ class TtsManager(
         mediaPlayer?.release()
         mediaPlayer = null
         _isPlaying.value = false
-        cachedFiles.clear() // Clear memory cache reference (files still in cacheDir)
+        _isLoading.value = false // Reset loading
+        cachedFiles.clear()
         currentChunkIndex = 0
     }
 }

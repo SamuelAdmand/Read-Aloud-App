@@ -1,6 +1,5 @@
 package com.samuel.readaloud.ui.components
 
-import android.R.attr.progress
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -23,31 +22,26 @@ import androidx.compose.material.icons.rounded.SkipPrevious
 import androidx.compose.material.icons.rounded.Speed
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.FilledIconButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Slider
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 
 @Composable
 fun PlayerControls(
     title: String,
     isPlaying: Boolean,
+    isLoading: Boolean, // NEW PARAMETER
     playbackSpeed: Float,
     voiceName: String,
     onPlayPause: () -> Unit,
@@ -170,11 +164,19 @@ fun PlayerControls(
                         containerColor = MaterialTheme.colorScheme.primary
                     )
                 ) {
-                    Icon(
-                        imageVector = if (isPlaying) Icons.Rounded.Pause else Icons.Rounded.PlayArrow,
-                        contentDescription = if (isPlaying) "Pause" else "Play",
-                        modifier = Modifier.size(36.dp)
-                    )
+                    if (isLoading) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(32.dp),
+                            color = MaterialTheme.colorScheme.onPrimary,
+                            strokeWidth = 3.dp
+                        )
+                    } else {
+                        Icon(
+                            imageVector = if (isPlaying) Icons.Rounded.Pause else Icons.Rounded.PlayArrow,
+                            contentDescription = if (isPlaying) "Pause" else "Play",
+                            modifier = Modifier.size(36.dp)
+                        )
+                    }
                 }
 
                 // Next
@@ -186,26 +188,6 @@ fun PlayerControls(
                     )
                 }
             }
-        }
-    }
-}
-
-@Preview
-@Composable
-fun PreviewPlayerControls() {
-    MaterialTheme {
-        Box(modifier = Modifier.padding(16.dp)) {
-            PlayerControls(
-                title = "Typed Text",
-                isPlaying = true,
-                playbackSpeed = 1.0f,
-                voiceName = "Aria (US)",
-                onPlayPause = {},
-                onNextSection = {},
-                onPrevSection = {},
-                onSpeedClick = {},
-                onVoiceClick = {},
-            )
         }
     }
 }

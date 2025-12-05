@@ -72,6 +72,7 @@ fun TypeScreen(
     viewModel: TypeViewModel = viewModel()
 ) {
     val isPlaying by viewModel.isPlaying.collectAsState()
+    val isLoading by viewModel.isLoading.collectAsState()
     val focusManager = LocalFocusManager.current
     // Dialog States
     var showVoiceDialog by remember { mutableStateOf(false) }
@@ -115,6 +116,7 @@ fun TypeScreen(
                 PlayerControls(
                     title = "Typed Text",
                     isPlaying = isPlaying,
+                    isLoading = isLoading, // Pass the loading state here
                     playbackSpeed = viewModel.playbackSpeed,
                     voiceName = viewModel.selectedVoiceName,
                     onPlayPause = { viewModel.onPlayPauseClicked() },

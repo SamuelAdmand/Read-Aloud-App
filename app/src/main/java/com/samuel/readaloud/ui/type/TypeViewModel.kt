@@ -31,7 +31,8 @@ class TypeViewModel(application: Application) : AndroidViewModel(application) {
 
     val isPlaying: StateFlow<Boolean> = ttsManager.isPlaying
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)
-
+    val isLoading: StateFlow<Boolean> = ttsManager.isLoading
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)
 
     // --- Voice & Playback State ---
     var selectedVoiceName by mutableStateOf("Aria (US)")
@@ -146,12 +147,17 @@ class TypeViewModel(application: Application) : AndroidViewModel(application) {
 
     fun onVoiceSelected(voice: Voice) {
         selectedVoiceId = voice.shortName
-        // Extract a cleaner name for the UI, e.g., "Aria (Neural)"
-        val simpleName = voice.name.substringBefore(" -").removePrefix("Microsoft ")
-        selectedVoiceName = simpleName
+        selectedVoiceName = voice.name // The name is now clean from Repository
 
-        // If player is visible, we might want to reload, but for now just update state
-        // The user will need to press play again or we can auto-trigger in future
+        // Instant restart if player is visible/active
+        if (isPlayerVisible) {
+            // Stop current playback
+            ttsManager.stop()
+            // Restart immediately with new voice
+            ttsManager.playText(textInput, selectedVoiceId)
+            // Ensure speed is maintained
+            ttsManager.setPlaybackSpeed(playbackSpeed)
+        }
     }
 
     fun onSpeedChanged(newSpeed: Float) {
