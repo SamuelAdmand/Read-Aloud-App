@@ -37,27 +37,32 @@ fun MainScreen() {
         NavItem("More", Icons.Filled.Settings, "more")
     )
 
+    // Get current route to determine visibility of Bottom Bar
+    val navBackStackEntry by navController.currentBackStackEntryAsState()
+    val currentDestination = navBackStackEntry?.destination
+    val currentRoute = currentDestination?.route
+
     Scaffold(
         bottomBar = {
-            NavigationBar {
-                val navBackStackEntry by navController.currentBackStackEntryAsState()
-                val currentDestination = navBackStackEntry?.destination
-
-                navItems.forEach { item ->
-                    NavigationBarItem(
-                        icon = { Icon(item.icon, contentDescription = item.label) },
-                        label = { Text(item.label) },
-                        selected = currentDestination?.hierarchy?.any { it.route == item.route } == true,
-                        onClick = {
-                            navController.navigate(item.route) {
-                                popUpTo(navController.graph.findStartDestination().id) {
-                                    saveState = true
+            // HIDE Bottom Bar if we are on the 'type_text' screen
+            if (currentRoute != "type_text") {
+                NavigationBar {
+                    navItems.forEach { item ->
+                        NavigationBarItem(
+                            icon = { Icon(item.icon, contentDescription = item.label) },
+                            label = { Text(item.label) },
+                            selected = currentDestination?.hierarchy?.any { it.route == item.route } == true,
+                            onClick = {
+                                navController.navigate(item.route) {
+                                    popUpTo(navController.graph.findStartDestination().id) {
+                                        saveState = true
+                                    }
+                                    launchSingleTop = true
+                                    restoreState = true
                                 }
-                                launchSingleTop = true
-                                restoreState = true
                             }
-                        }
-                    )
+                        )
+                    }
                 }
             }
         }
@@ -65,19 +70,16 @@ fun MainScreen() {
         NavHost(
             navController = navController,
             startDestination = "home",
-            modifier = Modifier.padding(innerPadding)
+            // This padding automatically adjusts. If bottomBar is hidden, bottom padding is 0.
+            modifier = Modifier.padding(bottom = innerPadding.calculateBottomPadding())
         ) {
-            // Updated HomeScreen call with the required callback
             composable("home") {
                 HomeScreen(
                     onTypeTextClick = { navController.navigate("type_text") }
                 )
             }
-
             composable("library") { LibraryScreen() }
             composable("more") { MoreScreen() }
-
-            // New Route for Type Screen
             composable("type_text") {
                 TypeScreen(
                     onBackClick = { navController.popBackStack() }

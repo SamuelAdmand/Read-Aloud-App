@@ -15,21 +15,22 @@ import kotlinx.coroutines.flow.stateIn
 class TypeViewModel(application: Application) : AndroidViewModel(application) {
 
     private val repository = TtsRepository()
-    // In a real app, inject this as a Singleton. Here we create it.
     private val ttsManager = TtsManager(application, repository)
 
     // UI State
     var textInput by mutableStateOf("")
         private set
 
-    // Expose TtsManager state to UI
+    // NEW: Controls visibility of the player. False = Editing, True = Playing
+    var isPlayerVisible by mutableStateOf(false)
+        private set
+
     val isPlaying: StateFlow<Boolean> = ttsManager.isPlaying
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)
 
     val progress: StateFlow<Float> = ttsManager.progress
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0f)
 
-    // We keep track of the selected voice (defaulting for now)
     var selectedVoiceName by mutableStateOf("Aria (US)")
     private var selectedVoiceId = "en-US-AriaNeural"
 
@@ -37,21 +38,28 @@ class TypeViewModel(application: Application) : AndroidViewModel(application) {
         textInput = newText
     }
 
+    // Called when the "Tick" FAB is clicked
+    fun onConfirmText() {
+        if (textInput.isBlank()) return
+
+        isPlayerVisible = true
+        // Start playback immediately from the beginning
+        ttsManager.playText(textInput, selectedVoiceId)
+    }
+
+    fun onEditClicked() {
+        // Stop playback because editing text invalidates the current audio
+        ttsManager.stop()
+        isPlayerVisible = false
+    }
+
     fun onPlayPauseClicked() {
-        if (isPlaying.value) {
-            ttsManager.togglePlayPause()
-        } else {
-            // If starting fresh
-            if (textInput.isNotBlank()) {
-                ttsManager.playText(textInput, selectedVoiceId)
-            } else {
-                ttsManager.togglePlayPause() // Resume if possible
-            }
-        }
+        ttsManager.togglePlayPause()
     }
 
     fun stopPlayback() {
         ttsManager.stop()
+        isPlayerVisible = false
     }
 
     override fun onCleared() {
