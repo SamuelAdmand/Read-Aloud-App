@@ -63,6 +63,7 @@ import androidx.compose.ui.platform.LocalContext
 import com.samuel.readaloud.domain.TtsManager
 import com.samuel.readaloud.repository.ContentRepository
 import com.samuel.readaloud.repository.UrlRepository
+import com.samuel.readaloud.ui.components.MiniPlayer
 import com.samuel.readaloud.ui.components.UrlInputDialog
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -87,67 +88,75 @@ fun MainScreen() {
 
     Scaffold(
         bottomBar = {
-            // HIDE Bottom Bar on 'type_text' and 'player' screens
+            // Only show bottom controls on main screens (Home, Library, Settings)
             if (currentRoute != "type_text" && currentRoute != "player") {
-                NavigationBar {
-                    // Spacer to push items to center
-                    Spacer(modifier = Modifier.weight(0.3f))
-
-                    // 1. Home Item
-                    NavigationBarItem(
-                        icon = { Icon(Icons.Filled.Home, contentDescription = "Home") },
-                        label = { Text("Home") },
-                        selected = currentDestination?.hierarchy?.any { it.route == "home" } == true,
-                        onClick = {
-                            navController.navigate("home") {
-                                popUpTo(navController.graph.findStartDestination().id) { saveState = true }
-                                launchSingleTop = true
-                                restoreState = true
-                            }
-                        },
-                        modifier = Modifier.weight(1f)
+                Column {
+                    // Mini Player sits on top of the Navigation Bar
+                    MiniPlayer(
+                        manager = ttsManager,
+                        onClick = { navController.navigate("player") }
                     )
 
-                    // 2. Center "Add" Button (Opens Bottom Sheet)
-                    NavigationBarItem(
-                        icon = {
-                            Box(
-                                modifier = Modifier
-                                    .size(48.dp)
-                                    .clip(RoundedCornerShape(16.dp))
-                                    .background(MaterialTheme.colorScheme.primary),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Filled.Add,
-                                    contentDescription = "Create",
-                                    tint = MaterialTheme.colorScheme.onPrimary
-                                )
-                            }
-                        },
-                        label = { /* No label for the center button */ },
-                        selected = false, // Never selected
-                        onClick = { showBottomSheet = true },
-                        modifier = Modifier.weight(1f)
-                    )
+                    NavigationBar {
+                        // Spacer to push items to center
+                        Spacer(modifier = Modifier.weight(0.3f))
 
-                    // 3. Library Item
-                    NavigationBarItem(
-                        icon = { Icon(Icons.Filled.Bookmarks, contentDescription = "Library") },
-                        label = { Text("Library") },
-                        selected = currentDestination?.hierarchy?.any { it.route == "library" } == true,
-                        onClick = {
-                            navController.navigate("library") {
-                                popUpTo(navController.graph.findStartDestination().id) { saveState = true }
-                                launchSingleTop = true
-                                restoreState = true
-                            }
-                        },
-                        modifier = Modifier.weight(1f)
-                    )
+                        // 1. Home Item
+                        NavigationBarItem(
+                            icon = { Icon(Icons.Filled.Home, contentDescription = "Home") },
+                            label = { Text("Home") },
+                            selected = currentDestination?.hierarchy?.any { it.route == "home" } == true,
+                            onClick = {
+                                navController.navigate("home") {
+                                    popUpTo(navController.graph.findStartDestination().id) { saveState = true }
+                                    launchSingleTop = true
+                                    restoreState = true
+                                }
+                            },
+                            modifier = Modifier.weight(1f)
+                        )
 
-                    // Spacer to push items to center
-                    Spacer(modifier = Modifier.weight(0.3f))
+                        // 2. Center "Add" Button (Opens Bottom Sheet)
+                        NavigationBarItem(
+                            icon = {
+                                Box(
+                                    modifier = Modifier
+                                        .size(48.dp)
+                                        .clip(RoundedCornerShape(16.dp))
+                                        .background(MaterialTheme.colorScheme.primary),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Filled.Add,
+                                        contentDescription = "Create",
+                                        tint = MaterialTheme.colorScheme.onPrimary
+                                    )
+                                }
+                            },
+                            label = { /* No label for the center button */ },
+                            selected = false, // Never selected
+                            onClick = { showBottomSheet = true },
+                            modifier = Modifier.weight(1f)
+                        )
+
+                        // 3. Library Item
+                        NavigationBarItem(
+                            icon = { Icon(Icons.Filled.Bookmarks, contentDescription = "Library") },
+                            label = { Text("Library") },
+                            selected = currentDestination?.hierarchy?.any { it.route == "library" } == true,
+                            onClick = {
+                                navController.navigate("library") {
+                                    popUpTo(navController.graph.findStartDestination().id) { saveState = true }
+                                    launchSingleTop = true
+                                    restoreState = true
+                                }
+                            },
+                            modifier = Modifier.weight(1f)
+                        )
+
+                        // Spacer to push items to center
+                        Spacer(modifier = Modifier.weight(0.3f))
+                    }
                 }
             }
         }
