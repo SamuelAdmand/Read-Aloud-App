@@ -73,9 +73,8 @@ class HomeViewModel(
 
             val result = repository.generateAudio(textInput, voice.shortName, outputFile)
 
-            // FIX: Directly use the file, no destructuring
-            result.onSuccess { file ->
-                playAudio(file)
+            result.onSuccess { (audioFile, _) ->
+                playAudio(audioFile)
             }.onFailure {
                 it.printStackTrace()
             }

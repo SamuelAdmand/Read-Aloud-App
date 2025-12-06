@@ -10,15 +10,29 @@ import com.samuel.readaloud.service.TtsMediaService
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 import java.io.File
 import java.util.Collections
 import java.util.concurrent.ConcurrentHashMap
+import java.util.regex.Pattern
 
 data class HighlightRange(val start: Int, val end: Int)
+
+data class Subtitle(
+    val startMillis: Long,
+    val endMillis: Long,
+    val text: String,
+    val globalRange: HighlightRange
+)
+
+data class CachedChunk(
+    val audioFile: File,
+    val subtitles: List<Subtitle>
+)
 
 class TtsManager private constructor(
     private val context: Context,
@@ -42,6 +56,7 @@ class TtsManager private constructor(
 
     private val scope = CoroutineScope(Dispatchers.Main + Job())
     private var mediaPlayer: MediaPlayer? = null
+    private var monitorJob: Job? = null
 
     // Queue State
     private var chunks: List<String> = emptyList()
@@ -51,7 +66,7 @@ class TtsManager private constructor(
 
     // Buffering State
     // Use ConcurrentHashMap for thread safety since multiple coroutines access this
-    private val cachedFiles = ConcurrentHashMap<Int, File>()
+    private val cachedChunks = ConcurrentHashMap<Int, CachedChunk>()
     // Track which chunks are currently being downloaded to avoid duplicate requests
     private val fetchingIndices = Collections.synchronizedSet(mutableSetOf<Int>())
 
@@ -122,12 +137,13 @@ class TtsManager private constructor(
     }
 
     private fun resetPlaybackState() {
+        stopMonitoring()
         mediaPlayer?.release()
         mediaPlayer = null
         _isPlaying.value = false
         _isLoading.value = false
         _currentHighlight.value = null
-        cachedFiles.clear()
+        cachedChunks.clear()
         fetchingIndices.clear()
         currentChunkIndex = 0
     }
@@ -141,15 +157,14 @@ class TtsManager private constructor(
         scope.launch {
             // 1. Get the IMMEDIATE chunk (Block UI if not ready, for low initial latency)
             _isLoading.value = true
-            val file = getOrFetchChunk(currentChunkIndex)
+            val chunkData = getOrFetchChunk(currentChunkIndex)
             _isLoading.value = false
 
-            if (file != null) {
+            if (chunkData != null) {
                 // 2. Trigger Background Buffering for subsequent chunks
                 bufferNextChunks()
 
-                updateHighlightForChunk(currentChunkIndex)
-                playFile(file)
+                playFile(chunkData)
             } else {
                 Log.e("TtsManager", "Failed chunk $currentChunkIndex")
                 stop()
@@ -166,7 +181,7 @@ class TtsManager private constructor(
 
         for (i in start until end) {
             // Only fetch if not already cached and not currently being fetched
-            if (!cachedFiles.containsKey(i) && !fetchingIndices.contains(i)) {
+            if (!cachedChunks.containsKey(i) && !fetchingIndices.contains(i)) {
                 scope.launch(Dispatchers.IO) {
                     getOrFetchChunk(i)
                 }
@@ -174,22 +189,13 @@ class TtsManager private constructor(
         }
     }
 
-    private fun updateHighlightForChunk(index: Int) {
-        if (index in chunkOffsets.indices) {
-            val start = chunkOffsets[index]
-            val chunkLength = chunks[index].length
-            val end = start + chunkLength
-            _currentHighlight.value = HighlightRange(start, end)
-        }
-    }
-
     /**
-     * Suspend function that returns the file.
+     * Suspend function that returns the cached chunk data.
      * If request is already in flight (by bufferNextChunks), it waits for it.
      */
-    private suspend fun getOrFetchChunk(index: Int): File? {
+    private suspend fun getOrFetchChunk(index: Int): CachedChunk? {
         // Return immediately if available
-        if (cachedFiles.containsKey(index)) return cachedFiles[index]
+        if (cachedChunks.containsKey(index)) return cachedChunks[index]
 
         // Mark as being fetched to prevent duplicate network calls
         fetchingIndices.add(index)
@@ -198,27 +204,113 @@ class TtsManager private constructor(
         val fileName = "chunk_$index.mp3"
         val outputFile = File(context.cacheDir, fileName)
 
-        // Generate Audio
+        // Generate Audio and SRT
         val result = repository.generateAudio(text, voiceShortName, outputFile)
 
         fetchingIndices.remove(index)
 
         return if (result.isSuccess) {
-            val file = result.getOrNull()
-            if (file != null) {
-                cachedFiles[index] = file
-                file
-            } else null
+            val (audio, srt) = result.getOrNull() ?: return null
+
+            // Parse SRT and map to global text
+            val globalOffset = chunkOffsets.getOrElse(index) { 0 }
+            val subtitles = parseSrt(srt, text, globalOffset)
+
+            val cachedChunk = CachedChunk(audio, subtitles)
+            cachedChunks[index] = cachedChunk
+            cachedChunk
         } else {
             null
         }
     }
 
-    private fun playFile(file: File) {
+    private fun parseSrt(srtFile: File, chunkText: String, chunkGlobalOffset: Int): List<Subtitle> {
+        val subtitles = mutableListOf<Subtitle>()
+        try {
+            val content = srtFile.readText()
+            // Regex to match: Index -> Time Range -> Text
+            val pattern = Pattern.compile(
+                "(\\d+)\\s+(\\d{2}:\\d{2}:\\d{2},\\d{3})\\s+-->\\s+(\\d{2}:\\d{2}:\\d{2},\\d{3})\\s+(.*?)(?=\\r?\\n\\r?\\n\\d|\\z)",
+                Pattern.DOTALL
+            )
+            val matcher = pattern.matcher(content)
+
+            var searchIndex = 0
+
+            while (matcher.find()) {
+                val startTimeStr = matcher.group(2)
+                val endTimeStr = matcher.group(3)
+                val rawText = matcher.group(4)?.trim() ?: ""
+
+                // Clean text for searching (normalize spaces)
+                val cleanText = rawText.replace(Regex("\\s+"), " ").trim()
+
+                val startMillis = parseTimestamp(startTimeStr)
+                val endMillis = parseTimestamp(endTimeStr)
+
+                // Search for this text in the chunk
+                var startIndex = chunkText.indexOf(cleanText, searchIndex)
+
+                // Fallback: match first few words if exact match fails
+                if (startIndex == -1 && cleanText.isNotEmpty()) {
+                    val firstFewWords = cleanText.split(" ").take(3).joinToString(" ")
+                    startIndex = chunkText.indexOf(firstFewWords, searchIndex)
+                }
+
+                if (startIndex == -1) {
+                    startIndex = searchIndex // Force continue
+                }
+
+                // Initial end index based on what we found
+                var endIndex = (startIndex + cleanText.length).coerceAtMost(chunkText.length)
+
+                // FIX: Greedily include trailing punctuation (.,!?) that might be missing from SRT text
+                while (endIndex < chunkText.length) {
+                    val nextChar = chunkText[endIndex]
+                    if (nextChar == '.' || nextChar == ',' || nextChar == '?' || nextChar == '!' || nextChar == ';' || nextChar == ':') {
+                        endIndex++
+                    } else {
+                        break
+                    }
+                }
+
+                searchIndex = endIndex
+
+                val globalStart = chunkGlobalOffset + startIndex
+                val globalEnd = chunkGlobalOffset + endIndex
+
+                subtitles.add(Subtitle(startMillis, endMillis, cleanText, HighlightRange(globalStart, globalEnd)))
+            }
+
+        } catch (e: Exception) {
+            Log.e("TtsManager", "Error parsing SRT", e)
+        }
+        return subtitles
+    }
+
+    private fun parseTimestamp(timestamp: String?): Long {
+        if (timestamp == null) return 0L
+        // Format: HH:mm:ss,SSS
+        try {
+            val parts = timestamp.replace(",", ".").split(":")
+            if (parts.size == 3) {
+                val hours = parts[0].toLong()
+                val minutes = parts[1].toLong()
+                val seconds = parts[2].toDouble()
+                return (hours * 3600000 + minutes * 60000 + seconds * 1000).toLong()
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+        return 0L
+    }
+
+    private fun playFile(chunkData: CachedChunk) {
         mediaPlayer?.release()
+        stopMonitoring()
 
         mediaPlayer = MediaPlayer().apply {
-            setDataSource(file.absolutePath)
+            setDataSource(chunkData.audioFile.absolutePath)
             prepare()
             try {
                 playbackParams = playbackParams.setSpeed(currentSpeed)
@@ -234,12 +326,43 @@ class TtsManager private constructor(
             start()
         }
         _isPlaying.value = true
+        startMonitoring(chunkData.subtitles)
+    }
+
+    private fun startMonitoring(subtitles: List<Subtitle>) {
+        monitorJob = scope.launch {
+            Log.d("TtsManager", "Started monitoring ${subtitles.size} subtitles.")
+            while (isActive && mediaPlayer?.isPlaying == true) {
+                val currentPos = mediaPlayer?.currentPosition?.toLong() ?: 0L
+
+                // Find the subtitle active at this timestamp
+                val activeSubtitle = subtitles.find {
+                    currentPos >= it.startMillis && currentPos < it.endMillis
+                }
+
+                if (activeSubtitle != null) {
+                    // Only update if changed to avoid state churn
+                    if (_currentHighlight.value != activeSubtitle.globalRange) {
+                        _currentHighlight.value = activeSubtitle.globalRange
+                        // Log.v("TtsManager", "Highlight: ${activeSubtitle.text}")
+                    }
+                }
+
+                delay(50) // Check every 50ms
+            }
+        }
+    }
+
+    private fun stopMonitoring() {
+        monitorJob?.cancel()
+        monitorJob = null
     }
 
     fun togglePlayPause() {
         mediaPlayer?.let {
             if (it.isPlaying) {
                 it.pause()
+                stopMonitoring()
                 _isPlaying.value = false
             } else {
                 try {
@@ -247,7 +370,13 @@ class TtsManager private constructor(
                 } catch (e: Exception) { }
                 it.start()
                 _isPlaying.value = true
-                updateHighlightForChunk(currentChunkIndex)
+
+                // Resume monitoring
+                val currentChunk = cachedChunks[currentChunkIndex]
+                if (currentChunk != null) {
+                    startMonitoring(currentChunk.subtitles)
+                }
+
                 // Resume buffering if needed
                 bufferNextChunks()
             }

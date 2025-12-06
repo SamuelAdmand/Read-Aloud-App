@@ -82,7 +82,7 @@ chaquopy {
     defaultConfig {
         version = "3.10"
         pip {
-            install("edge-tts")
+            install("edge-tts>=7.2.3")
             install("requests")
             install("trafilatura")
         }
