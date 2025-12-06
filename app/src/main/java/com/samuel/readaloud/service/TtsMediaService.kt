@@ -15,6 +15,7 @@ import android.support.v4.media.session.PlaybackStateCompat
 import androidx.core.app.NotificationCompat
 import androidx.media.session.MediaButtonReceiver
 import com.samuel.readaloud.MainActivity
+import com.samuel.readaloud.R
 import com.samuel.readaloud.domain.TtsManager
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -41,12 +42,11 @@ class TtsMediaService : Service() {
         // 1. Create Channel IMMEDIATELY
         createNotificationChannel()
 
-        // 2. Start Foreground IMMEDIATELY with a minimal, safe notification.
-        // We do this BEFORE initializing TtsManager or MediaSession to prevent timeouts.
+        // 2. Start Foreground IMMEDIATELY
         val notification = NotificationCompat.Builder(this, CHANNEL_ID)
-            .setSmallIcon(android.R.drawable.ic_media_play) // Safe system icon
+            .setSmallIcon(R.drawable.ic_launcher_foreground)
             .setContentTitle("Read Aloud")
-            .setContentText("Starting playback...")
+            .setContentText("Initializing playback...")
             .setPriority(NotificationCompat.PRIORITY_LOW)
             .setOngoing(true)
             .build()
@@ -59,30 +59,40 @@ class TtsMediaService : Service() {
             }
         } catch (e: Exception) {
             e.printStackTrace()
-            // If this fails, the service will likely crash, but at least we tried first.
+            // CRITICAL: If startForeground fails, stop immediately to avoid system crash.
+            stopSelf()
+            return
         }
 
-        // 3. NOW it is safe to do heavy initialization
-        ttsManager = TtsManager.getInstance(applicationContext)
+        // 3. Initialize dependencies synchronously to ensure they are ready for onStartCommand
+        try {
+            ttsManager = TtsManager.getInstance(applicationContext)
 
-        mediaSession = MediaSessionCompat(this, "TtsMediaService").apply {
-            setCallback(object : MediaSessionCompat.Callback() {
-                override fun onPlay() { ttsManager.togglePlayPause() }
-                override fun onPause() { ttsManager.togglePlayPause() }
-                override fun onStop() {
-                    ttsManager.stop()
-                    stopSelf()
-                }
-            })
-            isActive = true
+            mediaSession = MediaSessionCompat(this, "TtsMediaService").apply {
+                setCallback(object : MediaSessionCompat.Callback() {
+                    override fun onPlay() { ttsManager.togglePlayPause() }
+                    override fun onPause() { ttsManager.togglePlayPause() }
+                    override fun onStop() {
+                        ttsManager.stop()
+                        stopSelf()
+                    }
+                })
+                isActive = true
+            }
+
+            // 4. Start observing data (this is fine in a coroutine)
+            observeTtsManager()
+        } catch (e: Exception) {
+            e.printStackTrace()
+            stopSelf()
         }
-
-        // 4. Start observing data
-        observeTtsManager()
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        MediaButtonReceiver.handleIntent(mediaSession, intent)
+        // Now mediaSession is guaranteed to be initialized (or service stopped)
+        if (::mediaSession.isInitialized) {
+            MediaButtonReceiver.handleIntent(mediaSession, intent)
+        }
         return START_NOT_STICKY
     }
 
@@ -90,7 +100,9 @@ class TtsMediaService : Service() {
         serviceScope.launch {
             ttsManager.isPlaying.collect { isPlaying ->
                 updateMediaSessionState(isPlaying)
-                updateNotification(isPlaying, ttsManager.currentTitle.value)
+                // Use a safe call for title in case flow hasn't emitted yet, or default to app name
+                val title = ttsManager.currentTitle.value
+                updateNotification(isPlaying, title)
             }
         }
         serviceScope.launch {
@@ -100,6 +112,8 @@ class TtsMediaService : Service() {
             }
         }
     }
+
+    // ... (Keep the rest of the file: updateMediaSessionState, updateMediaMetadata, updateNotification, buildRealNotification, createNotificationChannel, onDestroy, onBind)
 
     private fun updateMediaSessionState(isPlaying: Boolean) {
         val state = if (isPlaying) PlaybackStateCompat.STATE_PLAYING else PlaybackStateCompat.STATE_PAUSED
@@ -129,7 +143,6 @@ class TtsMediaService : Service() {
     }
 
     private fun buildRealNotification(isPlaying: Boolean, title: String): Notification {
-        // Robust Intent Creation
         var playPauseIntent: PendingIntent? = null
         try {
             val state = if (isPlaying) PlaybackStateCompat.ACTION_PAUSE else PlaybackStateCompat.ACTION_PLAY
@@ -145,14 +158,13 @@ class TtsMediaService : Service() {
             this, 0, contentIntent, PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
         )
 
-        // Robust MediaStyle Creation
         val mediaStyle = androidx.media.app.NotificationCompat.MediaStyle()
             .setMediaSession(mediaSession.sessionToken)
             .setShowActionsInCompactView(0)
 
         val builder = NotificationCompat.Builder(this, CHANNEL_ID)
             .setStyle(mediaStyle)
-            .setSmallIcon(android.R.drawable.ic_media_play)
+            .setSmallIcon(R.drawable.ic_launcher_foreground)
             .setContentTitle(title)
             .setContentText("Reading Aloud")
             .setContentIntent(pendingContentIntent)
@@ -187,7 +199,9 @@ class TtsMediaService : Service() {
     }
 
     override fun onDestroy() {
-        mediaSession.release()
+        if (::mediaSession.isInitialized) {
+            mediaSession.release()
+        }
         serviceScope.cancel()
         super.onDestroy()
     }

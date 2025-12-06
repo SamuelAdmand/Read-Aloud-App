@@ -1,20 +1,19 @@
 package com.samuel.readaloud.domain
 
 import android.content.Context
+import android.content.Intent
 import android.media.MediaPlayer
 import android.util.Log
+import androidx.core.content.ContextCompat
 import com.samuel.readaloud.repository.TtsRepository
+import com.samuel.readaloud.service.TtsMediaService
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 import java.io.File
-import android.content.Intent
-import androidx.core.content.ContextCompat
-import com.samuel.readaloud.service.TtsMediaService
 
 /**
  * Manages the TTS playback queue, buffering logic, and media player.
@@ -47,7 +46,6 @@ class TtsManager private constructor(
 
     // Buffering State
     private val cachedFiles = mutableMapOf<Int, File>()
-    private var isFetching = false
 
     // UI State
     private val _isPlaying = MutableStateFlow(false)
@@ -85,15 +83,18 @@ class TtsManager private constructor(
     }
 
     fun playText(text: String, voice: String) {
-        // Start Foreground Service to handle media session & notification
+        // 1. Reset playback state internally WITHOUT stopping the service
+        resetPlaybackState()
+
+        // 2. Start Foreground Service
+        // It is safe to call this even if the service is already running.
         ContextCompat.startForegroundService(context, Intent(context, TtsMediaService::class.java))
-        stop() // Reset previous playback
 
-        sourceText = text // Save for editing
+        sourceText = text
         voiceShortName = voice
-        _currentTitle.value = text.take(30) + "..." // Simple title for now
+        _currentTitle.value = text.take(30) + "..."
 
-        // 1. Split text into chunks of 5 sentences
+        // 3. Split text and start processing
         chunks = TextChunker.chunkText(text)
         currentChunkIndex = 0
 
@@ -103,6 +104,19 @@ class TtsManager private constructor(
             processQueue()
         }
     }
+
+    /**
+     * Helper to reset player and queue without killing the service.
+     */
+    private fun resetPlaybackState() {
+        mediaPlayer?.release()
+        mediaPlayer = null
+        _isPlaying.value = false
+        _isLoading.value = false
+        cachedFiles.clear()
+        currentChunkIndex = 0
+    }
+
     private fun processQueue() {
         if (currentChunkIndex >= chunks.size) {
             stop()
@@ -110,7 +124,6 @@ class TtsManager private constructor(
         }
 
         scope.launch {
-
             // Step A: Ensure current chunk is ready
             _isLoading.value = true
             val currentFile = getOrFetchChunk(currentChunkIndex)
@@ -133,14 +146,12 @@ class TtsManager private constructor(
     }
 
     private suspend fun getOrFetchChunk(index: Int): File? {
-        // Return if already cached
         if (cachedFiles.containsKey(index)) return cachedFiles[index]
 
         val text = chunks[index]
         val fileName = "chunk_$index.mp3"
         val outputFile = File(context.cacheDir, fileName)
 
-        // Generate via Python
         val result = repository.generateAudio(text, voiceShortName, outputFile)
 
         return if (result.isSuccess) {
@@ -157,7 +168,6 @@ class TtsManager private constructor(
             setDataSource(file.absolutePath)
             prepare()
 
-            // Apply current speed
             try {
                 playbackParams = playbackParams.setSpeed(currentSpeed)
             } catch (e: Exception) {
@@ -165,7 +175,6 @@ class TtsManager private constructor(
             }
 
             setOnCompletionListener {
-                // When finished, move to next chunk
                 currentChunkIndex++
                 processQueue()
             }
@@ -181,7 +190,6 @@ class TtsManager private constructor(
                 it.pause()
                 _isPlaying.value = false
             } else {
-                // Re-apply speed just in case
                 try {
                     it.playbackParams = it.playbackParams.setSpeed(currentSpeed)
                 } catch (e: Exception) {
@@ -194,13 +202,8 @@ class TtsManager private constructor(
     }
 
     fun stop() {
-        mediaPlayer?.release()
-        mediaPlayer = null
-        _isPlaying.value = false
-        _isLoading.value = false // Reset loading
-        cachedFiles.clear()
-        currentChunkIndex = 0
-        // Stop the service
+        // Reset state AND stop the service
+        resetPlaybackState()
         context.stopService(Intent(context, TtsMediaService::class.java))
     }
 }

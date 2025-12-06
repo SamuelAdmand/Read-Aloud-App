@@ -14,7 +14,7 @@ DEST_DIR = r"D:\Projects\Android Projects\ReadAloud\Work_Files\Synced_Files"
 STRUCTURE_FILE_NAME = '_Project_Structure.txt'
 COMMIT_LOG_FILE_NAME = '_Commit_Logs.txt'
 DETAILED_COMMIT_LOG_FILE_NAME = '_Detailed_Commit_Logs.txt' 
-EXTENSIONS_TO_COPY = ('.kt', '.xml', '.kts', '.pro', '.properties', '.md')
+EXTENSIONS_TO_COPY = ('.kt','.toml', '.xml', '.kts', '.pro', '.properties', '.md', '.txt', '.py')
 
 # REMOVED '.git' from here so the watcher can see commit events
 IGNORED_DIRS = {'build', '.idea', 'gradle'} 
