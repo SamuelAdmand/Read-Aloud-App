@@ -35,24 +35,60 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.samuel.readaloud.domain.TtsManager
+import androidx.compose.animation.core.Animatable
+import androidx.compose.foundation.gestures.detectVerticalDragGestures
+import androidx.compose.foundation.layout.offset
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.unit.IntOffset
+import kotlinx.coroutines.launch
+import kotlin.math.roundToInt
 
 @Composable
 fun MiniPlayer(
     manager: TtsManager,
     onClick: () -> Unit,
+    onDismiss: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     val isPlaying by manager.isPlaying.collectAsState()
     val isLoading by manager.isLoading.collectAsState()
     val title by manager.currentTitle.collectAsState()
-
+// Animation state for swipe
+    val offsetY = remember { Animatable(0f) }
+    val scope = rememberCoroutineScope()
     // Only show if there is a title (implies active session)
     if (title.isBlank()) return
 
     Surface(
         modifier = modifier
             .fillMaxWidth()
-            .padding(horizontal = 8.dp, vertical = 4.dp) // Float slightly
+            .padding(horizontal = 8.dp, vertical = 4.dp)
+            // Apply offset based on drag
+            .offset { IntOffset(0, offsetY.value.roundToInt()) }
+            // Handle Swipe-to-Dismiss
+            .pointerInput(isPlaying) {
+                if (!isPlaying) {
+                    detectVerticalDragGestures(
+                        onDragEnd = {
+                            // Threshold to dismiss (approx 50-60dp)
+                            if (offsetY.value > 150f) {
+                                onDismiss()
+                            } else {
+                                // Reset position
+                                scope.launch { offsetY.animateTo(0f) }
+                            }
+                        },
+                        onVerticalDrag = { change, dragAmount ->
+                            change.consume()
+                            // Only allow dragging down (positive values)
+                            val newOffset = (offsetY.value + dragAmount).coerceAtLeast(0f)
+                            scope.launch { offsetY.snapTo(newOffset) }
+                        }
+                    )
+                }
+            }
             .clickable(onClick = onClick),
         shape = RoundedCornerShape(12.dp),
         color = MaterialTheme.colorScheme.surfaceContainerHighest, // Distinct background

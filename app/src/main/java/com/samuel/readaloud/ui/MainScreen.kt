@@ -94,7 +94,8 @@ fun MainScreen(intentSharedUrl: String? = null) {
                     // Mini Player sits on top of the Navigation Bar
                     MiniPlayer(
                         manager = ttsManager,
-                        onClick = { navController.navigate("player") }
+                        onClick = { navController.navigate("player") },
+                        onDismiss = { ttsManager.stop() }
                     )
 
                     NavigationBar {
