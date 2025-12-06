@@ -5,6 +5,7 @@ import android.content.Intent
 import android.media.MediaPlayer
 import android.util.Log
 import androidx.core.content.ContextCompat
+import com.samuel.readaloud.repository.ContentRepository
 import com.samuel.readaloud.repository.TtsRepository
 import com.samuel.readaloud.service.TtsMediaService
 import kotlinx.coroutines.CoroutineScope
@@ -81,9 +82,6 @@ class TtsManager private constructor(
     private val _currentHighlight = MutableStateFlow<HighlightRange?>(null)
     val currentHighlight = _currentHighlight.asStateFlow()
 
-    var sourceText: String = ""
-        private set
-
     private var currentSpeed: Float = 1.0f
 
     fun setPlaybackSpeed(speed: Float) {
@@ -93,22 +91,16 @@ class TtsManager private constructor(
         }
     }
 
-    fun importText(text: String, title: String = "") {
-        sourceText = text
-        if (title.isNotEmpty()) {
-            _currentTitle.value = title
-        } else {
-            _currentTitle.value = text.take(30) + "..."
-        }
-    }
+    fun playText(text: String, voice: String, title: String = "") {
+        // Sync with repository to ensure PlayerScreen displays this text and title
+        ContentRepository.updateContent(text, title)
 
-    fun playText(text: String, voice: String) {
         resetPlaybackState()
         ContextCompat.startForegroundService(context, Intent(context, TtsMediaService::class.java))
 
-        sourceText = text
         voiceShortName = voice
-        _currentTitle.value = text.take(30) + "..."
+        // Use the title stored in the repository
+        _currentTitle.value = ContentRepository.getCurrentTitle()
 
         chunks = TextChunker.chunkText(text)
 
@@ -207,7 +199,7 @@ class TtsManager private constructor(
             null
         }
     }
-    
+
     private fun parseSrt(srtFile: File, chunkText: String, chunkGlobalOffset: Int): List<Subtitle> {
         val subtitles = mutableListOf<Subtitle>()
         try {

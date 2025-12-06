@@ -8,6 +8,7 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.samuel.readaloud.domain.TtsManager
 import com.samuel.readaloud.model.Voice
+import com.samuel.readaloud.repository.ContentRepository
 import com.samuel.readaloud.repository.TtsRepository
 import com.samuel.readaloud.ui.components.VoiceGroup
 import kotlinx.coroutines.launch
@@ -46,7 +47,8 @@ class TypeViewModel(application: Application) : AndroidViewModel(application) {
         private set
 
     init {
-        textInput = ttsManager.sourceText
+        // Load the current content (allows editing existing sessions)
+        textInput = ContentRepository.getCurrentText()
         loadVoices()
     }
 

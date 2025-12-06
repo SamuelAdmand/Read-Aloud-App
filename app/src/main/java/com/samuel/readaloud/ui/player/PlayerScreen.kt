@@ -52,6 +52,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.samuel.readaloud.domain.TtsManager
 import com.samuel.readaloud.model.Voice
+import com.samuel.readaloud.repository.ContentRepository
 import com.samuel.readaloud.repository.TtsRepository
 import com.samuel.readaloud.ui.components.MarkdownTextPlayer
 import com.samuel.readaloud.ui.components.PlayerControls
@@ -83,6 +84,7 @@ fun PlayerScreen(
     var playbackSpeed by remember { mutableFloatStateOf(1.0f) }
     var allVoices by remember { mutableStateOf<List<Voice>>(emptyList()) }
     var voiceSearchQuery by remember { mutableStateOf("") }
+    val sourceText by ContentRepository.text.collectAsState()
 
     LaunchedEffect(Unit) {
         try {
@@ -136,7 +138,7 @@ fun PlayerScreen(
             ) {
                 // Use the new robust Markdown renderer
                 MarkdownTextPlayer(
-                    rawText = ttsManager.sourceText,
+                    rawText = sourceText,
                     currentHighlight = currentHighlight,
                     modifier = Modifier.padding(vertical = 16.dp)
                 )
@@ -168,7 +170,12 @@ fun PlayerScreen(
                         searchQuery = voiceSearchQuery,
                         onSearchQueryChange = { voiceSearchQuery = it },
                         onVoiceSelected = { voice ->
-                            ttsManager.playText(ttsManager.sourceText, voice.shortName)
+                            // Pass current title to preserve it during voice switch
+                            ttsManager.playText(
+                                text = sourceText,
+                                voice = voice.shortName,
+                                title = ContentRepository.getCurrentTitle()
+                            )
                             scope.launch { sheetState.hide() }.invokeOnCompletion { activeSheet = PlayerSheetType.NONE }
                         }
                     )

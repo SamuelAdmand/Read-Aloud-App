@@ -61,6 +61,7 @@ import android.widget.Toast
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.ui.platform.LocalContext
 import com.samuel.readaloud.domain.TtsManager
+import com.samuel.readaloud.repository.ContentRepository
 import com.samuel.readaloud.repository.UrlRepository
 import com.samuel.readaloud.ui.components.UrlInputDialog
 
@@ -81,6 +82,8 @@ fun MainScreen() {
     val navBackStackEntry by navController.currentBackStackEntryAsState()
     val currentDestination = navBackStackEntry?.destination
     val currentRoute = currentDestination?.route
+    val preferenceManager = remember { com.samuel.readaloud.data.local.PreferenceManager(context) }
+
 
     Scaffold(
         bottomBar = {
@@ -167,8 +170,10 @@ fun MainScreen() {
                 TypeScreen(
                     onBackClick = { navController.popBackStack() },
                     onPlayClick = {
-                        // Navigate to Player when play is clicked
-                        navController.navigate("player")
+                        // Navigate to Player and remove TypeScreen from back stack
+                        navController.navigate("player") {
+                            popUpTo("type_text") { inclusive = true }
+                        }
                     }
                 )
             }
@@ -176,7 +181,7 @@ fun MainScreen() {
             composable("player") {
                 PlayerScreen(
                     onBackClick = {
-                        // "Minimize" behavior: Navigate to Home to let user browse while listening
+                        // "Minimize": Navigate to Home
                         navController.navigate("home") {
                             popUpTo(navController.graph.findStartDestination().id) {
                                 saveState = true
@@ -186,8 +191,8 @@ fun MainScreen() {
                         }
                     },
                     onEditClick = {
-                        // Go back to the Type screen to edit text
-                        navController.popBackStack()
+                        // Explicitly navigate to TypeScreen to edit the current content
+                        navController.navigate("type_text")
                     }
                 )
             }
@@ -280,8 +285,13 @@ fun MainScreen() {
 
                     result.fold(
                         onSuccess = { article ->
-                            ttsManager.importText(article.text, article.title)
-                            navController.navigate("type_text")
+                            // Auto-start playback using the default voice and extracted title
+                            ttsManager.playText(
+                                text = article.text,
+                                voice = preferenceManager.voiceId,
+                                title = article.title
+                            )
+                            navController.navigate("player")
                         },
                         onFailure = { e ->
                             Toast.makeText(context, "Error: ${e.message}", Toast.LENGTH_LONG).show()
