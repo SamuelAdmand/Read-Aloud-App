@@ -13,11 +13,11 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.io.File
+import java.util.Collections
+import java.util.concurrent.ConcurrentHashMap
 
-/**
- * Represents a range in the global text to highlight.
- */
 data class HighlightRange(val start: Int, val end: Int)
 
 class TtsManager private constructor(
@@ -27,6 +27,8 @@ class TtsManager private constructor(
     companion object {
         @Volatile
         private var instance: TtsManager? = null
+        // Maintain a buffer of 3 sentences ahead to prevent network stutter
+        private const val BUFFER_SIZE = 3
 
         fun getInstance(context: Context): TtsManager {
             return instance ?: synchronized(this) {
@@ -37,6 +39,7 @@ class TtsManager private constructor(
             }
         }
     }
+
     private val scope = CoroutineScope(Dispatchers.Main + Job())
     private var mediaPlayer: MediaPlayer? = null
 
@@ -46,8 +49,11 @@ class TtsManager private constructor(
     private var currentChunkIndex = 0
     private var voiceShortName: String = "en-US-AriaNeural"
 
-    // Buffering State: Maps Index -> AudioFile
-    private val cachedFiles = mutableMapOf<Int, File>()
+    // Buffering State
+    // Use ConcurrentHashMap for thread safety since multiple coroutines access this
+    private val cachedFiles = ConcurrentHashMap<Int, File>()
+    // Track which chunks are currently being downloaded to avoid duplicate requests
+    private val fetchingIndices = Collections.synchronizedSet(mutableSetOf<Int>())
 
     // UI State
     private val _isPlaying = MutableStateFlow(false)
@@ -59,11 +65,9 @@ class TtsManager private constructor(
     private val _currentTitle = MutableStateFlow("")
     val currentTitle = _currentTitle.asStateFlow()
 
-    // Highlight State (Global indices)
     private val _currentHighlight = MutableStateFlow<HighlightRange?>(null)
     val currentHighlight = _currentHighlight.asStateFlow()
 
-    // Text Source
     var sourceText: String = ""
         private set
 
@@ -93,34 +97,29 @@ class TtsManager private constructor(
         voiceShortName = voice
         _currentTitle.value = text.take(30) + "..."
 
-        // 1. Chunk the raw text directly
         chunks = TextChunker.chunkText(text)
 
-        // 2. Calculate global offsets Robustly
+        // Calculate offsets
         chunkOffsets.clear()
         var searchIndex = 0
         chunks.forEach { chunk ->
-            // Try to find the chunk starting from where the last one ended.
             val index = sourceText.indexOf(chunk, startIndex = searchIndex)
-
             if (index != -1) {
                 chunkOffsets.add(index)
                 searchIndex = index + chunk.length
             } else {
-                // Fallback: Just assume it follows the previous one if exact match fails
                 chunkOffsets.add(searchIndex)
                 searchIndex += chunk.length
             }
         }
 
         currentChunkIndex = 0
-        Log.d("TtsManager", "Text split into ${chunks.size} chunks. Offsets: $chunkOffsets")
+        Log.d("TtsManager", "Text split into ${chunks.size} chunks.")
 
         if (chunks.isNotEmpty()) {
             processQueue()
         }
     }
-
 
     private fun resetPlaybackState() {
         mediaPlayer?.release()
@@ -129,6 +128,7 @@ class TtsManager private constructor(
         _isLoading.value = false
         _currentHighlight.value = null
         cachedFiles.clear()
+        fetchingIndices.clear()
         currentChunkIndex = 0
     }
 
@@ -139,22 +139,17 @@ class TtsManager private constructor(
         }
 
         scope.launch {
+            // 1. Get the IMMEDIATE chunk (Block UI if not ready, for low initial latency)
             _isLoading.value = true
             val file = getOrFetchChunk(currentChunkIndex)
             _isLoading.value = false
 
             if (file != null) {
-                // Update Highlight IMMEDIATELY when we prepare to play this chunk
+                // 2. Trigger Background Buffering for subsequent chunks
+                bufferNextChunks()
+
                 updateHighlightForChunk(currentChunkIndex)
-
                 playFile(file)
-
-                // Pre-fetch next
-                if (currentChunkIndex + 1 < chunks.size) {
-                    launch(Dispatchers.IO) {
-                        getOrFetchChunk(currentChunkIndex + 1)
-                    }
-                }
             } else {
                 Log.e("TtsManager", "Failed chunk $currentChunkIndex")
                 stop()
@@ -162,26 +157,51 @@ class TtsManager private constructor(
         }
     }
 
+    /**
+     * Looks ahead and starts downloading future chunks in parallel/background.
+     */
+    private fun bufferNextChunks() {
+        val start = currentChunkIndex + 1
+        val end = (currentChunkIndex + 1 + BUFFER_SIZE).coerceAtMost(chunks.size)
+
+        for (i in start until end) {
+            // Only fetch if not already cached and not currently being fetched
+            if (!cachedFiles.containsKey(i) && !fetchingIndices.contains(i)) {
+                scope.launch(Dispatchers.IO) {
+                    getOrFetchChunk(i)
+                }
+            }
+        }
+    }
+
     private fun updateHighlightForChunk(index: Int) {
         if (index in chunkOffsets.indices) {
             val start = chunkOffsets[index]
-            // The highlight ends where the chunk text ends
             val chunkLength = chunks[index].length
             val end = start + chunkLength
-
             _currentHighlight.value = HighlightRange(start, end)
         }
     }
 
+    /**
+     * Suspend function that returns the file.
+     * If request is already in flight (by bufferNextChunks), it waits for it.
+     */
     private suspend fun getOrFetchChunk(index: Int): File? {
+        // Return immediately if available
         if (cachedFiles.containsKey(index)) return cachedFiles[index]
+
+        // Mark as being fetched to prevent duplicate network calls
+        fetchingIndices.add(index)
 
         val text = chunks[index]
         val fileName = "chunk_$index.mp3"
         val outputFile = File(context.cacheDir, fileName)
 
-        // Note: TtsRepository must be updated to return Result<File> as requested in previous steps
+        // Generate Audio
         val result = repository.generateAudio(text, voiceShortName, outputFile)
+
+        fetchingIndices.remove(index)
 
         return if (result.isSuccess) {
             val file = result.getOrNull()
@@ -224,14 +244,12 @@ class TtsManager private constructor(
             } else {
                 try {
                     it.playbackParams = it.playbackParams.setSpeed(currentSpeed)
-                } catch (e: Exception) {
-                    Log.e("TtsManager", "Failed to set speed on resume", e)
-                }
+                } catch (e: Exception) { }
                 it.start()
                 _isPlaying.value = true
-
-                // Ensure highlight is set when resuming
                 updateHighlightForChunk(currentChunkIndex)
+                // Resume buffering if needed
+                bufferNextChunks()
             }
         }
     }
