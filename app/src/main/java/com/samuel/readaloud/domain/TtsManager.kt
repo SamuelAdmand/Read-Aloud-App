@@ -42,7 +42,6 @@ class TtsManager private constructor(
     companion object {
         @Volatile
         private var instance: TtsManager? = null
-        // Maintain a buffer of 3 sentences ahead to prevent network stutter
         private const val BUFFER_SIZE = 3
 
         fun getInstance(context: Context): TtsManager {
@@ -92,20 +91,19 @@ class TtsManager private constructor(
     }
 
     fun playText(text: String, voice: String, title: String = "") {
-        // Sync with repository to ensure PlayerScreen displays this text and title
-        ContentRepository.updateContent(text, title)
+        // 1. Graceful Transition: Hard reset (clear content) before starting new
+        resetPlaybackState(clearContent = true)
 
-        resetPlaybackState()
+        // Sync with repository
+        ContentRepository.updateContent(text, title)
+        _currentTitle.value = ContentRepository.getCurrentTitle()
+
+        // Start Service
         ContextCompat.startForegroundService(context, Intent(context, TtsMediaService::class.java))
 
         voiceShortName = voice
-        // Use the title stored in the repository
-        _currentTitle.value = ContentRepository.getCurrentTitle()
-
         chunks = TextChunker.chunkText(text)
 
-        // FIX: Calculate offsets by accumulation since TextChunker is now lossless.
-        // This prevents "drifting" errors caused by indexOf searching.
         chunkOffsets.clear()
         var runningOffset = 0
         chunks.forEach { chunk ->
@@ -121,21 +119,51 @@ class TtsManager private constructor(
         }
     }
 
-    private fun resetPlaybackState() {
+    /**
+     * Resets player state.
+     * @param clearContent If true, wipes the text chunks (New Song).
+     *                     If false, keeps text but resets index (Finished Song / Replay).
+     */
+    private fun resetPlaybackState(clearContent: Boolean) {
+        // Stop any active monitoring
         stopMonitoring()
-        mediaPlayer?.release()
+
+        // Release player immediately
+        try {
+            if (mediaPlayer?.isPlaying == true) {
+                mediaPlayer?.stop()
+            }
+            mediaPlayer?.release()
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
         mediaPlayer = null
+
         _isPlaying.value = false
         _isLoading.value = false
         _currentHighlight.value = null
-        cachedChunks.clear()
+
+        // Cancel background fetches
         fetchingIndices.clear()
+
+        // Reset Queue Position
         currentChunkIndex = 0
+
+        if (clearContent) {
+            // WIPE DATA (For new playback)
+            chunks = emptyList()
+            chunkOffsets.clear()
+            cachedChunks.clear()
+        }
+        // If clearContent is false, we keep chunks/cache so we can Replay
     }
 
     private fun processQueue() {
+        // Check if we reached the end
         if (currentChunkIndex >= chunks.size) {
-            stop()
+            // Playback Finished.
+            // Do NOT clear content, just reset state so user can press Play again.
+            stop(clearContent = false)
             return
         }
 
@@ -168,19 +196,19 @@ class TtsManager private constructor(
     }
 
     private suspend fun getOrFetchChunk(index: Int): CachedChunk? {
+        // Safety check: if chunks were cleared during fetch
+        if (index >= chunks.size) return null
+
         if (cachedChunks.containsKey(index)) return cachedChunks[index]
 
         fetchingIndices.add(index)
 
         val text = chunks[index]
-        // FIX: Sanitize text for TTS to avoid reading Markdown symbols (like #, *),
-        // but keep length identical to preserve highlighting offsets.
         val ttsText = TextChunker.sanitizeMarkdownForTts(text)
 
-        val fileName = "chunk_$index.mp3"
+        val fileName = "chunk_${text.hashCode()}.mp3" // Use hash to avoid overwriting if text changes
         val outputFile = File(context.cacheDir, fileName)
 
-        // Generate Audio using the sanitized text
         val result = repository.generateAudio(ttsText, voiceShortName, outputFile)
 
         fetchingIndices.remove(index)
@@ -189,7 +217,6 @@ class TtsManager private constructor(
             val (audio, srt) = result.getOrNull() ?: return null
 
             val globalOffset = chunkOffsets.getOrElse(index) { 0 }
-            // Pass the ORIGINAL raw text (with Markdown) to parseSrt so we map back to the source
             val subtitles = parseSrt(srt, text, globalOffset)
 
             val cachedChunk = CachedChunk(audio, subtitles)
@@ -216,8 +243,6 @@ class TtsManager private constructor(
                 val startTimeStr = matcher.group(2)
                 val endTimeStr = matcher.group(3)
                 val rawText = matcher.group(4)?.trim() ?: ""
-
-                // Clean SRT text (single spaces)
                 val cleanText = rawText.replace(Regex("\\s+"), " ").trim()
 
                 val startMillis = parseTimestamp(startTimeStr)
@@ -226,58 +251,35 @@ class TtsManager private constructor(
                 var startIndex = -1
                 var endIndex = -1
 
-                // 1. Try Fuzzy Regex Match (Handles newlines/tabs in chunkText)
                 try {
-                    // Escape text, then replace spaces with \s+ (one or more whitespace)
                     val escapedText = Pattern.quote(cleanText)
                     val regexPattern = escapedText.replace(" ", "\\E\\s+\\Q")
-
                     val textMatcher = Pattern.compile(regexPattern).matcher(chunkText)
                     if (textMatcher.find(searchIndex)) {
                         startIndex = textMatcher.start()
                         endIndex = textMatcher.end()
                     }
-                } catch (e: Exception) {
-                    Log.w("TtsManager", "Regex match failed for '$cleanText'", e)
-                }
+                } catch (e: Exception) { }
 
-                // 2. Fallback: Simple Search (if regex fails or text is too simple)
                 if (startIndex == -1) {
                     startIndex = chunkText.indexOf(cleanText, searchIndex)
-                    if (startIndex != -1) {
-                        endIndex = startIndex + cleanText.length
-                    }
+                    if (startIndex != -1) endIndex = startIndex + cleanText.length
                 }
 
-                // 3. Last Resort Fallback: Match first 3 words
                 if (startIndex == -1 && cleanText.isNotEmpty()) {
                     val firstFewWords = cleanText.split(" ").take(3).joinToString(" ")
                     startIndex = chunkText.indexOf(firstFewWords, searchIndex)
-                    if (startIndex != -1) {
-                        // Estimate end
-                        endIndex = (startIndex + cleanText.length).coerceAtMost(chunkText.length)
-                    }
+                    if (startIndex != -1) endIndex = (startIndex + cleanText.length).coerceAtMost(chunkText.length)
                 }
 
-                if (startIndex == -1) {
-                    // Could not find text. Don't update searchIndex to give next subtitle a chance?
-                    // Or advance slightly? Let's keep searchIndex as is.
-                    Log.w("TtsManager", "Could not map text: '$cleanText'")
-                    continue
-                }
+                if (startIndex == -1) continue
 
-                // Greedy Punctuation: Include trailing .,!?:;
                 while (endIndex < chunkText.length) {
                     val nextChar = chunkText[endIndex]
-                    if (nextChar in listOf('.', ',', '?', '!', ';', ':')) {
-                        endIndex++
-                    } else {
-                        break
-                    }
+                    if (nextChar in listOf('.', ',', '?', '!', ';', ':')) endIndex++ else break
                 }
 
                 searchIndex = endIndex
-
                 val globalStart = chunkGlobalOffset + startIndex
                 val globalEnd = chunkGlobalOffset + endIndex
 
@@ -300,9 +302,7 @@ class TtsManager private constructor(
                 val seconds = parts[2].toDouble()
                 return (hours * 3600000 + minutes * 60000 + seconds * 1000).toLong()
             }
-        } catch (e: Exception) {
-            e.printStackTrace()
-        }
+        } catch (e: Exception) { }
         return 0L
     }
 
@@ -315,9 +315,7 @@ class TtsManager private constructor(
             prepare()
             try {
                 playbackParams = playbackParams.setSpeed(currentSpeed)
-            } catch (e: Exception) {
-                Log.e("TtsManager", "Failed to set speed", e)
-            }
+            } catch (e: Exception) { }
 
             setOnCompletionListener {
                 currentChunkIndex++
@@ -351,28 +349,39 @@ class TtsManager private constructor(
     }
 
     fun togglePlayPause() {
-        mediaPlayer?.let {
-            if (it.isPlaying) {
-                it.pause()
+        mediaPlayer?.let { player ->
+            if (player.isPlaying) {
+                player.pause()
                 stopMonitoring()
                 _isPlaying.value = false
             } else {
                 try {
-                    it.playbackParams = it.playbackParams.setSpeed(currentSpeed)
+                    player.playbackParams = player.playbackParams.setSpeed(currentSpeed)
                 } catch (e: Exception) { }
-                it.start()
+                player.start()
                 _isPlaying.value = true
+
+                // Resume monitoring
                 val currentChunk = cachedChunks[currentChunkIndex]
                 if (currentChunk != null) {
                     startMonitoring(currentChunk.subtitles)
                 }
                 bufferNextChunks()
             }
+        } ?: run {
+            // Player is null. This happens if we finished playback (Replay case)
+            // or if app was killed and restarted (but data persists in Repo/Manager if not killed).
+            if (chunks.isNotEmpty()) {
+                // REPLAY Logic: Start from 0 (which was set by stop(false))
+                processQueue()
+            }
         }
     }
 
-    fun stop() {
-        resetPlaybackState()
-        context.stopService(Intent(context, TtsMediaService::class.java))
+    fun stop(clearContent: Boolean = true) {
+        resetPlaybackState(clearContent)
+        if (clearContent) {
+            context.stopService(Intent(context, TtsMediaService::class.java))
+        }
     }
 }

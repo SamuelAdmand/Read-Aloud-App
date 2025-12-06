@@ -7,12 +7,16 @@ import android.app.PendingIntent
 import android.app.Service
 import android.content.Intent
 import android.content.pm.ServiceInfo
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
+import android.graphics.drawable.BitmapDrawable
 import android.os.Build
 import android.os.IBinder
 import android.support.v4.media.MediaMetadataCompat
 import android.support.v4.media.session.MediaSessionCompat
 import android.support.v4.media.session.PlaybackStateCompat
 import androidx.core.app.NotificationCompat
+import androidx.core.content.ContextCompat
 import androidx.media.session.MediaButtonReceiver
 import com.samuel.readaloud.MainActivity
 import com.samuel.readaloud.R
@@ -22,6 +26,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
+import android.graphics.Canvas
 
 class TtsMediaService : Service() {
 
@@ -76,6 +81,9 @@ class TtsMediaService : Service() {
                         ttsManager.stop()
                         stopSelf()
                     }
+                    // TODO: Implement logic in TtsManager to handle these
+                    override fun onSkipToNext() { }
+                    override fun onSkipToPrevious() { }
                 })
                 isActive = true
             }
@@ -117,7 +125,12 @@ class TtsMediaService : Service() {
 
     private fun updateMediaSessionState(isPlaying: Boolean) {
         val state = if (isPlaying) PlaybackStateCompat.STATE_PLAYING else PlaybackStateCompat.STATE_PAUSED
-        val actions = PlaybackStateCompat.ACTION_PLAY or PlaybackStateCompat.ACTION_PAUSE or PlaybackStateCompat.ACTION_STOP
+        val actions = PlaybackStateCompat.ACTION_PLAY or
+                PlaybackStateCompat.ACTION_PAUSE or
+                PlaybackStateCompat.ACTION_STOP or
+                PlaybackStateCompat.ACTION_SKIP_TO_NEXT or
+                PlaybackStateCompat.ACTION_SKIP_TO_PREVIOUS
+
         mediaSession.setPlaybackState(
             PlaybackStateCompat.Builder()
                 .setState(state, PlaybackStateCompat.PLAYBACK_POSITION_UNKNOWN, 1.0f)
@@ -127,14 +140,20 @@ class TtsMediaService : Service() {
     }
 
     private fun updateMediaMetadata(title: String) {
+        // Use the helper instead of BitmapFactory
+        val artwork = getBitmapFromDrawable(R.mipmap.ic_launcher)
+
         mediaSession.setMetadata(
             MediaMetadataCompat.Builder()
                 .putString(MediaMetadataCompat.METADATA_KEY_TITLE, title)
                 .putString(MediaMetadataCompat.METADATA_KEY_ARTIST, "Read Aloud")
+                .putBitmap(MediaMetadataCompat.METADATA_KEY_ALBUM_ART, artwork)
+                .putBitmap(MediaMetadataCompat.METADATA_KEY_DISPLAY_ICON, artwork)
                 .putLong(MediaMetadataCompat.METADATA_KEY_DURATION, -1L)
                 .build()
         )
     }
+
 
     private fun updateNotification(isPlaying: Boolean, title: String) {
         val notification = buildRealNotification(isPlaying, title)
@@ -143,13 +162,12 @@ class TtsMediaService : Service() {
     }
 
     private fun buildRealNotification(isPlaying: Boolean, title: String): Notification {
-        var playPauseIntent: PendingIntent? = null
-        try {
-            val state = if (isPlaying) PlaybackStateCompat.ACTION_PAUSE else PlaybackStateCompat.ACTION_PLAY
-            playPauseIntent = MediaButtonReceiver.buildMediaButtonPendingIntent(this, state)
-        } catch (e: Exception) {
-            e.printStackTrace()
-        }
+        val prevIntent = MediaButtonReceiver.buildMediaButtonPendingIntent(this, PlaybackStateCompat.ACTION_SKIP_TO_PREVIOUS)
+        val nextIntent = MediaButtonReceiver.buildMediaButtonPendingIntent(this, PlaybackStateCompat.ACTION_SKIP_TO_NEXT)
+        val playPauseIntent = MediaButtonReceiver.buildMediaButtonPendingIntent(
+            this,
+            if (isPlaying) PlaybackStateCompat.ACTION_PAUSE else PlaybackStateCompat.ACTION_PLAY
+        )
 
         val contentIntent = Intent(this, MainActivity::class.java).apply {
             flags = Intent.FLAG_ACTIVITY_SINGLE_TOP
@@ -158,29 +176,31 @@ class TtsMediaService : Service() {
             this, 0, contentIntent, PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
         )
 
+        // Use the helper here
+        val artwork = getBitmapFromDrawable(R.mipmap.ic_launcher)
+
         val mediaStyle = androidx.media.app.NotificationCompat.MediaStyle()
             .setMediaSession(mediaSession.sessionToken)
-            .setShowActionsInCompactView(0)
+            .setShowActionsInCompactView(0, 1, 2)
 
-        val builder = NotificationCompat.Builder(this, CHANNEL_ID)
+        return NotificationCompat.Builder(this, CHANNEL_ID)
             .setStyle(mediaStyle)
             .setSmallIcon(R.drawable.ic_launcher_foreground)
+            .setLargeIcon(artwork) // Now guaranteed to be a valid Bitmap
             .setContentTitle(title)
-            .setContentText("Reading Aloud")
+            .setContentText("Read Aloud")
             .setContentIntent(pendingContentIntent)
             .setOnlyAlertOnce(true)
             .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
             .setOngoing(isPlaying)
-
-        if (playPauseIntent != null) {
-            builder.addAction(
+            .addAction(android.R.drawable.ic_media_previous, "Previous", prevIntent)
+            .addAction(
                 if (isPlaying) android.R.drawable.ic_media_pause else android.R.drawable.ic_media_play,
                 if (isPlaying) "Pause" else "Play",
                 playPauseIntent
             )
-        }
-
-        return builder.build()
+            .addAction(android.R.drawable.ic_media_next, "Next", nextIntent)
+            .build()
     }
 
     private fun createNotificationChannel() {
@@ -207,4 +227,25 @@ class TtsMediaService : Service() {
     }
 
     override fun onBind(intent: Intent?): IBinder? = null
+
+    private fun getBitmapFromDrawable(resId: Int): Bitmap? {
+        val drawable = ContextCompat.getDrawable(this, resId) ?: return null
+
+        // If it's already a bitmap drawable (e.g., PNG), return the bitmap
+        if (drawable is BitmapDrawable) {
+            return drawable.bitmap
+        }
+
+        // Otherwise (Vector/Adaptive), draw it onto a canvas
+        val bitmap = Bitmap.createBitmap(
+            drawable.intrinsicWidth.coerceAtLeast(1),
+            drawable.intrinsicHeight.coerceAtLeast(1),
+            Bitmap.Config.ARGB_8888
+        )
+        val canvas = Canvas(bitmap)
+        drawable.setBounds(0, 0, canvas.width, canvas.height)
+        drawable.draw(canvas)
+        return bitmap
+    }
+
 }
