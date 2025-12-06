@@ -1,30 +1,39 @@
 import json
 import trafilatura
 from trafilatura.settings import use_config
+from urllib.parse import urlparse
 
 def extract_from_url(url):
     """
-    Downloads an article from a URL and extracts the main text.
-    Returns a JSON string with 'title' and 'text', or an error.
+    Router function that decides which extractor to use based on the URL.
     """
     try:
-        # standard config, but we can customize if needed
-        config = use_config()
+        domain = urlparse(url).netloc.lower()
 
-        # 1. Download the HTML
-        # We use a custom User-Agent to mimic a Google Bot.
-        # Many soft paywalls allow bots to index their content.
+        # --- SITE SPECIFIC RULES ---
+        # Example: if "reddit.com" in domain: return _extract_reddit(url)
+        # You can add specific `elif` blocks here for sites that need special handling.
+
+        # --- GENERIC FALLBACK ---
+        return _extract_generic(url)
+
+    except Exception as e:
+        return json.dumps({"error": str(e)})
+
+def _extract_generic(url):
+    """
+    Uses Trafilatura to download and extract text.
+    """
+    try:
+        config = use_config()
+        # Set user-agent to avoid being blocked
+        config.set("DEFAULT", "USER_AGENT", "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:109.0) Gecko/20100101 Firefox/115.0")
+
         downloaded = trafilatura.fetch_url(url)
 
         if downloaded is None:
-            # If standard fetch fails, try again with explicit headers using requests
-            # (trafilatura does this internally but sometimes needs forcing)
-            # For now, we rely on trafilatura's internal robust fetcher.
             return json.dumps({"error": "Failed to download page. Check your internet or the URL."})
 
-        # 2. Extract content
-        # include_comments=False -> skip comments
-        # include_tables=False -> skip tables (better for TTS flow)
         result = trafilatura.extract(
             downloaded,
             include_comments=False,
@@ -35,8 +44,6 @@ def extract_from_url(url):
         )
 
         if result:
-            # trafilatura returns a JSON string when output_format='json'
-            # keys: 'title', 'text', 'date', 'author', 'fingerprint', 'url', 'license'
             return result
         else:
             return json.dumps({"error": "Could not extract text from this page."})

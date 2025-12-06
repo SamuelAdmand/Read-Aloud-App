@@ -42,11 +42,15 @@ class HomeViewModel(
     private fun loadVoices() {
         viewModelScope.launch {
             isLoadingVoices = true
-            val fetchedVoices = repository.getVoices()
-            voices = fetchedVoices
-            // Default to Aria (US) if available, otherwise the first one
-            selectedVoice = fetchedVoices.find { it.shortName == "en-US-AriaNeural" }
-                ?: fetchedVoices.firstOrNull()
+            try {
+                val fetchedVoices = repository.getVoices()
+                voices = fetchedVoices
+                // Default to Aria (US) if available, otherwise the first one
+                selectedVoice = fetchedVoices.find { it.shortName == "en-US-AriaNeural" }
+                    ?: fetchedVoices.firstOrNull()
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
             isLoadingVoices = false
         }
     }
@@ -70,7 +74,8 @@ class HomeViewModel(
             // Use the selected voice's shortName
             val result = repository.generateAudio(textInput, voice.shortName, outputFile)
 
-            result.onSuccess { file ->
+            result.onSuccess { (file, _) ->
+                // We destructured the Pair to get just the file, ignoring timestamps for this screen
                 playAudio(file)
             }.onFailure {
                 it.printStackTrace()

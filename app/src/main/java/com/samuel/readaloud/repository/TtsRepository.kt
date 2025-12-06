@@ -1,5 +1,6 @@
 package com.samuel.readaloud.repository
 
+import android.util.Log
 import com.chaquo.python.Python
 import com.samuel.readaloud.model.Voice
 import kotlinx.coroutines.Dispatchers
@@ -7,32 +8,80 @@ import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import java.io.File
 
+data class WordTimestamp(
+    val word: String,
+    val start: Float,
+    val end: Float,
+    val textOffset: Int,
+    val wordLen: Int
+)
+
 class TtsRepository {
 
     private val pythonModule by lazy {
         Python.getInstance().getModule("tts_engine")
     }
 
-    /**
-     * Fetches the list of available voices from the Python engine.
-     */
     suspend fun getVoices(): List<Voice> = withContext(Dispatchers.IO) {
         val jsonString = pythonModule.callAttr("get_voices_json").toString()
         parseVoices(jsonString)
     }
 
-    /**
-     * Generates audio from text using the specified voice.
-     */
-    suspend fun generateAudio(text: String, voiceShortName: String, outputFile: File): Result<File> = withContext(Dispatchers.IO) {
+    suspend fun generateAudio(
+        text: String,
+        voiceShortName: String,
+        outputFile: File
+    ): Result<Pair<File, List<WordTimestamp>>> = withContext(Dispatchers.IO) {
         try {
-            // Call the python function: tts(text, voice, output_file)
+            Log.d("TtsRepository", "Generating audio for: ${outputFile.name} (Text len: ${text.length})")
+
+            // Generate audio via Python
             pythonModule.callAttr("tts", text, voiceShortName, outputFile.absolutePath)
 
-            Result.success(outputFile)
+            // Check sidecar JSON
+            val metaFile = File(outputFile.absolutePath + ".json")
+            val timestamps = if (metaFile.exists()) {
+                val jsonContent = metaFile.readText()
+                Log.d("TtsRepository", "JSON File found. Size: ${jsonContent.length} chars")
+                // Log first 100 chars to debug
+                Log.d("TtsRepository", "JSON Preview: ${jsonContent.take(100)}")
+
+                parseTimestamps(jsonContent)
+            } else {
+                Log.e("TtsRepository", "Meta file NOT found: ${metaFile.absolutePath}")
+                emptyList()
+            }
+
+            Log.d("TtsRepository", "Parsed ${timestamps.size} timestamps.")
+
+            Result.success(Pair(outputFile, timestamps))
         } catch (e: Exception) {
+            Log.e("TtsRepository", "Error generation", e)
             Result.failure(e)
         }
+    }
+
+    private fun parseTimestamps(jsonString: String): List<WordTimestamp> {
+        val list = mutableListOf<WordTimestamp>()
+        try {
+            val jsonArray = JSONArray(jsonString)
+            for (i in 0 until jsonArray.length()) {
+                val obj = jsonArray.getJSONObject(i)
+                list.add(
+                    WordTimestamp(
+                        word = obj.optString("word"),
+                        start = obj.optDouble("start").toFloat(),
+                        end = obj.optDouble("end").toFloat(),
+                        textOffset = obj.optInt("text_offset"),
+                        wordLen = obj.optInt("word_len")
+                    )
+                )
+            }
+        } catch (e: Exception) {
+            Log.e("TtsRepository", "JSON Parse Error", e)
+            e.printStackTrace()
+        }
+        return list
     }
 
     private fun parseVoices(jsonString: String): List<Voice> {
@@ -42,7 +91,6 @@ class TtsRepository {
             for (i in 0 until jsonArray.length()) {
                 val obj = jsonArray.getJSONObject(i)
 
-                // 1. Extract ShortName (e.g., "en-US-AriaNeural")
                 val shortName = obj.optString("ShortName").takeIf { it.isNotBlank() }
                     ?: obj.optString("Name").takeIf { it.isNotBlank() }
                     ?: ""
@@ -51,7 +99,6 @@ class TtsRepository {
                 val locale = obj.optString("Locale").ifBlank { "Unknown" }
 
                 if (shortName.isNotBlank()) {
-                    // 2. Generate a clean name (e.g., "Aria (Neural)")
                     val namePart = shortName.split("-").lastOrNull() ?: shortName
                     val cleanName = if (namePart.endsWith("Neural")) {
                         namePart.replace("Neural", " (Neural)")
@@ -61,7 +108,7 @@ class TtsRepository {
 
                     voiceList.add(
                         Voice(
-                            name = cleanName, // Clean name for UI
+                            name = cleanName,
                             shortName = shortName,
                             gender = gender,
                             locale = locale

@@ -74,6 +74,8 @@ dependencies {
     implementation(libs.material.icons.extended.android)
     // Media (for MediaSession and Notification MediaStyle)
     implementation("androidx.media:media:1.7.0")
+    // Markdown Renderer
+    implementation("com.mikepenz:multiplatform-markdown-renderer-android:0.37.0")
 }
 
 chaquopy {

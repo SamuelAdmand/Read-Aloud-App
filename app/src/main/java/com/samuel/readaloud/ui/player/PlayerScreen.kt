@@ -1,6 +1,5 @@
 package com.samuel.readaloud.ui.player
 
-import android.R.attr.fontWeight
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -13,7 +12,6 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
@@ -47,9 +45,12 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.LayoutCoordinates
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -70,30 +71,52 @@ fun PlayerScreen(
 ) {
     val context = LocalContext.current
     val ttsManager = remember { TtsManager.getInstance(context) }
-    // Repository for fetching voices locally in Player
     val repository = remember { TtsRepository() }
 
     val isPlaying by ttsManager.isPlaying.collectAsState()
     val isLoading by ttsManager.isLoading.collectAsState()
     val currentTitle by ttsManager.currentTitle.collectAsState()
+    val currentHighlight by ttsManager.currentHighlight.collectAsState()
 
-    // Bottom Sheet State
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     var activeSheet by remember { mutableStateOf(PlayerSheetType.NONE) }
     val scope = rememberCoroutineScope()
+    val scrollState = rememberScrollState()
 
     var playbackSpeed by remember { mutableFloatStateOf(1.0f) }
-
-    // Voice State
     var allVoices by remember { mutableStateOf<List<Voice>>(emptyList()) }
     var voiceSearchQuery by remember { mutableStateOf("") }
 
-    // Load voices once
     LaunchedEffect(Unit) {
         try {
             allVoices = repository.getVoices()
         } catch (e: Exception) {
             e.printStackTrace()
+        }
+    }
+
+    // Build the displayed text using sourceText directly
+    val displayedText = remember(ttsManager.sourceText, currentHighlight) {
+        buildAnnotatedString {
+            val text = ttsManager.sourceText
+            append(text)
+
+            currentHighlight?.let { range ->
+                val start = range.start.coerceIn(0, text.length)
+                val end = range.end.coerceIn(0, text.length)
+
+                if (start < end) {
+                    addStyle(
+                        style = SpanStyle(
+                            background = Color.Red.copy(alpha = 0.4f),
+                            fontWeight = FontWeight.Bold,
+                            color = Color.Black
+                        ),
+                        start = start,
+                        end = end
+                    )
+                }
+            }
         }
     }
 
@@ -114,6 +137,7 @@ fun PlayerScreen(
             )
         },
         bottomBar = {
+            // Debug overlay removed, ready for production use
             PlayerControls(
                 title = currentTitle,
                 isPlaying = isPlaying,
@@ -134,17 +158,16 @@ fun PlayerScreen(
                 .fillMaxSize()
                 .padding(horizontal = 24.dp)
         ) {
-            // Scrollable Text Display
             Column(
                 modifier = Modifier
                     .weight(1f)
-                    .verticalScroll(rememberScrollState())
+                    .verticalScroll(scrollState)
             ) {
                 Text(
-                    text = ttsManager.sourceText.ifBlank { "No text content available." },
+                    text = displayedText,
                     style = MaterialTheme.typography.bodyLarge.copy(
-                        fontSize = 18.sp,
-                        lineHeight = 28.sp
+                        fontSize = 20.sp,
+                        lineHeight = 32.sp
                     ),
                     color = MaterialTheme.colorScheme.onSurface,
                     modifier = Modifier.padding(vertical = 16.dp)
@@ -153,7 +176,6 @@ fun PlayerScreen(
         }
     }
 
-    // --- Bottom Sheet Handling ---
     if (activeSheet != PlayerSheetType.NONE) {
         ModalBottomSheet(
             onDismissRequest = { activeSheet = PlayerSheetType.NONE },
@@ -178,11 +200,7 @@ fun PlayerScreen(
                         searchQuery = voiceSearchQuery,
                         onSearchQueryChange = { voiceSearchQuery = it },
                         onVoiceSelected = { voice ->
-                            // For now, we assume simple restarting or parameter change
-                            // Ideally TtsManager should handle voice change on the fly or next chunk
-                            // This is a placeholder for the actual voice switch logic in TtsManager
                             ttsManager.playText(ttsManager.sourceText, voice.shortName)
-
                             scope.launch { sheetState.hide() }.invokeOnCompletion { activeSheet = PlayerSheetType.NONE }
                         }
                     )
@@ -193,6 +211,7 @@ fun PlayerScreen(
     }
 }
 
+// ... (SpeedBottomSheetContent and VoiceBottomSheetContent remain unchanged)
 @Composable
 fun SpeedBottomSheetContent(
     currentSpeed: Float,
@@ -255,7 +274,6 @@ fun VoiceBottomSheetContent(
     )
 
     // --- Processing: Group by Language -> Then by Region ---
-    // Returns List<Pair<LanguageName, Map<RegionName, List<Voice>>>>
     val processedVoices = remember(voices, searchQuery) {
         val filtered = if (searchQuery.isBlank()) voices else voices.filter {
             it.name.contains(searchQuery, ignoreCase = true) ||
@@ -263,7 +281,6 @@ fun VoiceBottomSheetContent(
                     getRegionName(it.locale).contains(searchQuery, ignoreCase = true)
         }
 
-        // 1. Group by Language
         val byLanguage = filtered.groupBy { getLanguageName(it.locale) }
             .toList()
             .sortedWith(Comparator { (langNameA, voicesA), (langNameB, voicesB) ->
@@ -279,23 +296,20 @@ fun VoiceBottomSheetContent(
                 }
             })
 
-        // 2. Map values to Sub-Groups (Region)
         byLanguage.map { (lang, langVoices) ->
             val byRegion = langVoices.groupBy { getRegionName(it.locale) }
-                .toSortedMap() // Sort regions alphabetically
+                .toSortedMap()
             lang to byRegion
         }
     }
 
     // --- UI ---
     Column(modifier = Modifier.fillMaxSize()) {
-        // Reduced top padding (from 16.dp to 0.dp or minimal)
         Text(
             text = "Select Voice",
             style = MaterialTheme.typography.titleLarge,
             fontWeight = FontWeight.Bold,
             modifier = Modifier.padding(start = 24.dp, end = 24.dp, bottom = 16.dp)
-            // Removed top padding here because ModalBottomSheet usually has some built-in
         )
 
         OutlinedTextField(
@@ -325,7 +339,6 @@ fun VoiceBottomSheetContent(
                 modifier = Modifier.weight(1f)
             ) {
                 processedVoices.forEach { (language, regionMap) ->
-                    // Level 1: Language Header
                     stickyHeader {
                         Box(
                             modifier = Modifier
@@ -343,9 +356,7 @@ fun VoiceBottomSheetContent(
                         }
                     }
 
-                    // Iterate Regions
                     regionMap.forEach { (region, regionVoices) ->
-                        // Level 2: Region Sub-Header (Only show if there are multiple regions or meaningful distinction)
                         item {
                             Text(
                                 text = region,
@@ -359,7 +370,6 @@ fun VoiceBottomSheetContent(
                             )
                         }
 
-                        // Level 3: Voices
                         items(regionVoices) { voice ->
                             Row(
                                 modifier = Modifier
@@ -373,7 +383,6 @@ fun VoiceBottomSheetContent(
                                         text = voice.name,
                                         style = MaterialTheme.typography.bodyLarge
                                     )
-                                    // Removed redundant locale text since we have headers
                                 }
                             }
                         }
