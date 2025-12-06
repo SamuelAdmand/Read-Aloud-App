@@ -181,10 +181,15 @@ class TtsManager private constructor(
         fetchingIndices.add(index)
 
         val text = chunks[index]
+        // FIX: Sanitize text for TTS to avoid reading Markdown symbols (like #, *),
+        // but keep length identical to preserve highlighting offsets.
+        val ttsText = TextChunker.sanitizeMarkdownForTts(text)
+
         val fileName = "chunk_$index.mp3"
         val outputFile = File(context.cacheDir, fileName)
 
-        val result = repository.generateAudio(text, voiceShortName, outputFile)
+        // Generate Audio using the sanitized text
+        val result = repository.generateAudio(ttsText, voiceShortName, outputFile)
 
         fetchingIndices.remove(index)
 
@@ -192,6 +197,7 @@ class TtsManager private constructor(
             val (audio, srt) = result.getOrNull() ?: return null
 
             val globalOffset = chunkOffsets.getOrElse(index) { 0 }
+            // Pass the ORIGINAL raw text (with Markdown) to parseSrt so we map back to the source
             val subtitles = parseSrt(srt, text, globalOffset)
 
             val cachedChunk = CachedChunk(audio, subtitles)
@@ -201,7 +207,7 @@ class TtsManager private constructor(
             null
         }
     }
-
+    
     private fun parseSrt(srtFile: File, chunkText: String, chunkGlobalOffset: Int): List<Subtitle> {
         val subtitles = mutableListOf<Subtitle>()
         try {

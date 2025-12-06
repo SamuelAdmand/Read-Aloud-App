@@ -46,17 +46,14 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.layout.LayoutCoordinates
-import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.text.SpanStyle
-import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.samuel.readaloud.domain.TtsManager
 import com.samuel.readaloud.model.Voice
 import com.samuel.readaloud.repository.TtsRepository
+import com.samuel.readaloud.ui.components.MarkdownTextPlayer
 import com.samuel.readaloud.ui.components.PlayerControls
 import kotlinx.coroutines.launch
 import java.util.Locale
@@ -95,31 +92,6 @@ fun PlayerScreen(
         }
     }
 
-    // Build the displayed text using sourceText directly
-    val displayedText = remember(ttsManager.sourceText, currentHighlight) {
-        buildAnnotatedString {
-            val text = ttsManager.sourceText
-            append(text)
-
-            currentHighlight?.let { range ->
-                val start = range.start.coerceIn(0, text.length)
-                val end = range.end.coerceIn(0, text.length)
-
-                if (start < end) {
-                    addStyle(
-                        style = SpanStyle(
-                            // Change text color to Blue instead of background highlight
-                            color = Color(0xFF2196F3), // Material Blue 500
-                            fontWeight = FontWeight.Bold
-                        ),
-                        start = start,
-                        end = end
-                    )
-                }
-            }
-        }
-    }
-
     Scaffold(
         topBar = {
             TopAppBar(
@@ -137,7 +109,6 @@ fun PlayerScreen(
             )
         },
         bottomBar = {
-            // Debug overlay removed, ready for production use
             PlayerControls(
                 title = currentTitle,
                 isPlaying = isPlaying,
@@ -163,13 +134,10 @@ fun PlayerScreen(
                     .weight(1f)
                     .verticalScroll(scrollState)
             ) {
-                Text(
-                    text = displayedText,
-                    style = MaterialTheme.typography.bodyLarge.copy(
-                        fontSize = 20.sp,
-                        lineHeight = 32.sp
-                    ),
-                    color = MaterialTheme.colorScheme.onSurface,
+                // Use the new robust Markdown renderer
+                MarkdownTextPlayer(
+                    rawText = ttsManager.sourceText,
+                    currentHighlight = currentHighlight,
                     modifier = Modifier.padding(vertical = 16.dp)
                 )
             }
@@ -211,13 +179,12 @@ fun PlayerScreen(
     }
 }
 
-// ... (SpeedBottomSheetContent and VoiceBottomSheetContent remain unchanged)
 @Composable
 fun SpeedBottomSheetContent(
     currentSpeed: Float,
     onSpeedSelected: (Float) -> Unit
 ) {
-    val speeds = listOf(0.5f, 0.75f, 1.0f,1.05f,1.10f,1.15f,1.20f, 1.25f,1.30f,1.35f,1.40f,1.45f, 1.5f,1.6f,1.7f,1.75f, 2.0f)
+    val speeds = listOf(0.5f, 0.75f, 1.0f, 1.10f, 1.25f, 1.5f, 2.0f)
 
     Column(modifier = Modifier.padding(bottom = 32.dp)) {
         Text(

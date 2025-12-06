@@ -56,4 +56,21 @@ object TextChunker {
 
         return chunks
     }
+
+    /**
+     * Replaces Markdown syntax characters with spaces to prevent TTS from reading them,
+     * while preserving the exact string length for accurate highlighting mapping.
+     */
+    fun sanitizeMarkdownForTts(text: String): String {
+        val sb = StringBuilder(text)
+        for (i in sb.indices) {
+            val c = sb[i]
+            // Replace common Markdown markers with space: #, *, _, `, >, [, ]
+            // We keep ( and ) for now as they are often used in normal text too.
+            if (c == '#' || c == '*' || c == '_' || c == '`' || c == '>' || c == '[' || c == ']') {
+                sb.setCharAt(i, ' ')
+            }
+        }
+        return sb.toString()
+    }
 }
