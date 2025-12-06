@@ -39,13 +39,17 @@ import com.samuel.readaloud.ui.components.VoiceSelectionDialog
 @Composable
 fun TypeScreen(
     onBackClick: () -> Unit,
-    onPlayClick: () -> Unit, // New navigation callback
+    onPlayClick: () -> Unit,
+    isEditMode: Boolean = false,
     viewModel: TypeViewModel = viewModel()
 ) {
     val focusManager = LocalFocusManager.current
 
     LaunchedEffect(Unit) {
         viewModel.loadDefaultSettings()
+        if (isEditMode) {
+            viewModel.loadContentForEdit()
+        }
     }
     // Dialog States
     var showVoiceDialog by remember { mutableStateOf(false) }

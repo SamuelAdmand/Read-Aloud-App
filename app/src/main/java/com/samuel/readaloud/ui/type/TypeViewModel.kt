@@ -47,8 +47,6 @@ class TypeViewModel(application: Application) : AndroidViewModel(application) {
         private set
 
     init {
-        // Load the current content (allows editing existing sessions)
-        textInput = ContentRepository.getCurrentText()
         loadVoices()
     }
 
@@ -96,7 +94,9 @@ class TypeViewModel(application: Application) : AndroidViewModel(application) {
 
         groupedVoices = processedGroups
     }
-
+    fun loadContentForEdit() {
+        textInput = ContentRepository.getCurrentText()
+    }
     // --- Actions ---
 
     fun onTextChanged(newText: String) {

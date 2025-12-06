@@ -1,5 +1,7 @@
 package com.samuel.readaloud.ui
 
+import android.net.http.SslCertificate.restoreState
+import android.net.http.SslCertificate.saveState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -67,6 +69,8 @@ import com.samuel.readaloud.ui.components.MiniPlayer
 import com.samuel.readaloud.ui.components.UrlInputDialog
 import android.util.Patterns
 import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.navigation.NavType
+import androidx.navigation.navArgument
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -113,8 +117,7 @@ fun MainScreen(intentSharedUrl: String? = null) {
 
     Scaffold(
         bottomBar = {
-            // Only show bottom controls on main screens (Home, Library, Settings)
-            if (currentRoute != "type_text" && currentRoute != "player") {
+            if (currentRoute?.startsWith("type_text") != true && currentRoute != "player")  {
                 Column {
                     // Mini Player sits on top of the Navigation Bar
                     MiniPlayer(
@@ -221,18 +224,24 @@ fun MainScreen(intentSharedUrl: String? = null) {
             composable("library") { LibraryScreen() }
             composable("more") { MoreScreen() }
 
-            composable("type_text") {
+            composable(
+                route = "type_text?editMode={editMode}",
+                arguments = listOf(navArgument("editMode") {
+                    type = NavType.BoolType
+                    defaultValue = false
+                })
+            ) { backStackEntry ->
                 TypeScreen(
                     onBackClick = { navController.popBackStack() },
                     onPlayClick = {
                         // Navigate to Player and remove TypeScreen from back stack
                         navController.navigate("player") {
-                            popUpTo("type_text") { inclusive = true }
+                            popUpTo("type_text?editMode={editMode}") { inclusive = true }
                         }
-                    }
+                    },
+                    isEditMode = backStackEntry.arguments?.getBoolean("editMode") ?: false
                 )
             }
-
             composable("player") {
                 PlayerScreen(
                     onBackClick = {
@@ -246,8 +255,7 @@ fun MainScreen(intentSharedUrl: String? = null) {
                         }
                     },
                     onEditClick = {
-                        // Explicitly navigate to TypeScreen to edit the current content
-                        navController.navigate("type_text")
+                        navController.navigate("type_text?editMode=true")
                     }
                 )
             }
