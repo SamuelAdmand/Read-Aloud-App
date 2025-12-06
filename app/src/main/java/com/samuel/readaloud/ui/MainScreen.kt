@@ -65,6 +65,8 @@ import com.samuel.readaloud.repository.ContentRepository
 import com.samuel.readaloud.repository.UrlRepository
 import com.samuel.readaloud.ui.components.MiniPlayer
 import com.samuel.readaloud.ui.components.UrlInputDialog
+import android.util.Patterns
+import androidx.compose.ui.platform.LocalClipboardManager
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -85,6 +87,29 @@ fun MainScreen(intentSharedUrl: String? = null) {
     val currentRoute = currentDestination?.route
     val preferenceManager = remember { com.samuel.readaloud.data.local.PreferenceManager(context) }
 
+    val clipboardManager = LocalClipboardManager.current
+
+// Helper to handle URL extraction and playback
+    val processUrl: (String) -> Unit = { url ->
+        isExtracting = true
+        scope.launch {
+            val result = urlRepository.extractArticle(url)
+            isExtracting = false
+            result.fold(
+                onSuccess = { article ->
+                    ttsManager.playText(
+                        text = article.text,
+                        voice = preferenceManager.voiceId,
+                        title = article.title
+                    )
+                    navController.navigate("player")
+                },
+                onFailure = { e ->
+                    Toast.makeText(context, "Error: ${e.message}", Toast.LENGTH_LONG).show()
+                }
+            )
+        }
+    }
 
     Scaffold(
         bottomBar = {
@@ -170,7 +195,27 @@ fun MainScreen(intentSharedUrl: String? = null) {
         ) {
             composable("home") {
                 HomeScreen(
-                    onTypeTextClick = { navController.navigate("type_text") }
+                    onTypeTextClick = { navController.navigate("type_text") },
+                    onLinkClick = { showUrlDialog = true },
+                    onClipboardClick = {
+                        val clipText = clipboardManager.getText()?.text
+                        if (!clipText.isNullOrBlank()) {
+                            if (Patterns.WEB_URL.matcher(clipText).matches()) {
+                                // It's a link, extract it
+                                processUrl(clipText)
+                            } else {
+                                // It's plain text, play immediately
+                                ttsManager.playText(
+                                    text = clipText,
+                                    voice = preferenceManager.voiceId,
+                                    title = "Clipboard Content"
+                                )
+                                navController.navigate("player")
+                            }
+                        } else {
+                            Toast.makeText(context, "Clipboard is empty", Toast.LENGTH_SHORT).show()
+                        }
+                    }
                 )
             }
             composable("library") { LibraryScreen() }
@@ -287,27 +332,7 @@ fun MainScreen(intentSharedUrl: String? = null) {
             onDismissRequest = { showUrlDialog = false },
             onConfirm = { url ->
                 showUrlDialog = false
-                isExtracting = true
-
-                scope.launch {
-                    val result = urlRepository.extractArticle(url)
-                    isExtracting = false
-
-                    result.fold(
-                        onSuccess = { article ->
-                            // Auto-start playback using the default voice and extracted title
-                            ttsManager.playText(
-                                text = article.text,
-                                voice = preferenceManager.voiceId,
-                                title = article.title
-                            )
-                            navController.navigate("player")
-                        },
-                        onFailure = { e ->
-                            Toast.makeText(context, "Error: ${e.message}", Toast.LENGTH_LONG).show()
-                        }
-                    )
-                }
+                processUrl(url)
             }
         )
     }
