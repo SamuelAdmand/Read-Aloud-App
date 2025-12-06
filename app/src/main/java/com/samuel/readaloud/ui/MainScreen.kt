@@ -57,6 +57,12 @@ import com.samuel.readaloud.ui.more.MoreScreen
 import com.samuel.readaloud.ui.player.PlayerScreen
 import com.samuel.readaloud.ui.type.TypeScreen
 import kotlinx.coroutines.launch
+import android.widget.Toast
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.ui.platform.LocalContext
+import com.samuel.readaloud.domain.TtsManager
+import com.samuel.readaloud.repository.UrlRepository
+import com.samuel.readaloud.ui.components.UrlInputDialog
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -65,7 +71,12 @@ fun MainScreen() {
     var showBottomSheet by remember { mutableStateOf(false) }
     val sheetState = rememberModalBottomSheetState()
     val scope = rememberCoroutineScope()
+    val context = LocalContext.current
+    val urlRepository = remember { UrlRepository() }
+    val ttsManager = remember { TtsManager.getInstance(context) }
 
+    var showUrlDialog by remember { mutableStateOf(false) }
+    var isExtracting by remember { mutableStateOf(false) }
     // Get current route to determine visibility of Bottom Bar
     val navBackStackEntry by navController.currentBackStackEntryAsState()
     val currentDestination = navBackStackEntry?.destination
@@ -225,8 +236,10 @@ fun MainScreen() {
                         icon = Icons.Filled.Link,
                         label = "Paste link",
                         onClick = {
-                            // Placeholder
-                            scope.launch { sheetState.hide() }.invokeOnCompletion { showBottomSheet = false }
+                            scope.launch { sheetState.hide() }.invokeOnCompletion {
+                                showBottomSheet = false
+                                showUrlDialog = true
+                            }
                         }
                     )
 
@@ -250,6 +263,63 @@ fun MainScreen() {
                             }
                         }
                     )
+                }
+            }
+        }
+    }
+    if (showUrlDialog) {
+        UrlInputDialog(
+            onDismissRequest = { showUrlDialog = false },
+            onConfirm = { url ->
+                showUrlDialog = false
+                isExtracting = true
+
+                scope.launch {
+                    val result = urlRepository.extractArticle(url)
+                    isExtracting = false
+
+                    result.fold(
+                        onSuccess = { article ->
+                            ttsManager.importText(article.text, article.title)
+                            navController.navigate("type_text")
+                        },
+                        onFailure = { e ->
+                            Toast.makeText(context, "Error: ${e.message}", Toast.LENGTH_LONG).show()
+                        }
+                    )
+                }
+            }
+        )
+    }
+
+    if (isExtracting) {
+        // Simple overlay loading indicator
+        Box(
+            modifier = Modifier
+                .size(72.dp)
+                .clip(RoundedCornerShape(16.dp))
+                .background(MaterialTheme.colorScheme.surfaceContainerHighest)
+                .padding(16.dp), // Adjust position using alignment in a real Box scope if needed,
+            // but here we might need a Z-index wrapper.
+            // simpler: show a Toast or just rely on the fact the dialog closed.
+        ) {
+            // ideally this should be a Dialog or centered overlay.
+            // For now, let's use a non-blocking UI indication or a proper Dialog.
+        }
+
+        // Re-implementation as a blocking Dialog for safety
+        androidx.compose.ui.window.Dialog(onDismissRequest = {}) {
+            Surface(
+                shape = RoundedCornerShape(16.dp),
+                color = MaterialTheme.colorScheme.surface
+            ) {
+                Column(
+                    modifier = Modifier.padding(24.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    CircularProgressIndicator()
+                    Spacer(modifier = Modifier.size(16.dp))
+                    Text("Extracting article...")
                 }
             }
         }

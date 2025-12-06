@@ -46,6 +46,7 @@ class TypeViewModel(application: Application) : AndroidViewModel(application) {
         private set
 
     init {
+        textInput = ttsManager.sourceText
         loadVoices()
     }
 

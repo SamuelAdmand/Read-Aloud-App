@@ -91,7 +91,7 @@ fun TypeScreen(
                 modifier = Modifier
                     .fillMaxWidth()
                     .weight(1f)
-                    .padding(horizontal = 24.dp),
+                    .padding(horizontal = 15.dp),
                 colors = TextFieldDefaults.colors(
                     focusedContainerColor = Color.Transparent,
                     unfocusedContainerColor = Color.Transparent,
@@ -116,8 +116,8 @@ fun TypeScreen(
                 enabled = viewModel.textInput.isNotBlank(),
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(80.dp)
-                    .padding(start = 8.dp, end = 8.dp),
+                    .height(60.dp)
+                    .padding(start = 10.dp, end = 10.dp),
                 shape = androidx.compose.foundation.shape.RoundedCornerShape(16.dp),
                 colors = ButtonDefaults.buttonColors(
                     containerColor = MaterialTheme.colorScheme.primary,

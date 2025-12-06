@@ -79,6 +79,8 @@ chaquopy {
         version = "3.10"
         pip {
             install("edge-tts")
+            install("requests")
+            install("trafilatura")
         }
     }
 }

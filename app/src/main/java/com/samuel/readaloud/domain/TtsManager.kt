@@ -68,6 +68,19 @@ class TtsManager private constructor(
         }
     }
 
+    /**
+     * Updates the source text and title without starting playback.
+     * Useful for importing text from external sources (files, links).
+     */
+    fun importText(text: String, title: String = "") {
+        sourceText = text
+        if (title.isNotEmpty()) {
+            _currentTitle.value = title
+        } else {
+            _currentTitle.value = text.take(30) + "..."
+        }
+    }
+
     fun playText(text: String, voice: String) {
         stop() // Reset previous playback
 
