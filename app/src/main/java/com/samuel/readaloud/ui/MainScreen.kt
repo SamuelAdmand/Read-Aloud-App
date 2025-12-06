@@ -54,6 +54,7 @@ import androidx.navigation.compose.rememberNavController
 import com.samuel.readaloud.ui.home.HomeScreen
 import com.samuel.readaloud.ui.library.LibraryScreen
 import com.samuel.readaloud.ui.more.MoreScreen
+import com.samuel.readaloud.ui.player.PlayerScreen
 import com.samuel.readaloud.ui.type.TypeScreen
 import kotlinx.coroutines.launch
 
@@ -72,8 +73,8 @@ fun MainScreen() {
 
     Scaffold(
         bottomBar = {
-            // HIDE Bottom Bar if we are on the 'type_text' screen
-            if (currentRoute != "type_text") {
+            // HIDE Bottom Bar on 'type_text' and 'player' screens
+            if (currentRoute != "type_text" && currentRoute != "player") {
                 NavigationBar {
                     // Spacer to push items to center
                     Spacer(modifier = Modifier.weight(0.3f))
@@ -138,7 +139,6 @@ fun MainScreen() {
         }
     ) { innerPadding ->
 
-        // Navigation Host
         NavHost(
             navController = navController,
             startDestination = "home",
@@ -150,10 +150,34 @@ fun MainScreen() {
                 )
             }
             composable("library") { LibraryScreen() }
-            composable("more") { MoreScreen() } // Kept as a route, but removed from bottom bar
+            composable("more") { MoreScreen() }
+
             composable("type_text") {
                 TypeScreen(
-                    onBackClick = { navController.popBackStack() }
+                    onBackClick = { navController.popBackStack() },
+                    onPlayClick = {
+                        // Navigate to Player when play is clicked
+                        navController.navigate("player")
+                    }
+                )
+            }
+
+            composable("player") {
+                PlayerScreen(
+                    onBackClick = {
+                        // "Minimize" behavior: Navigate to Home to let user browse while listening
+                        navController.navigate("home") {
+                            popUpTo(navController.graph.findStartDestination().id) {
+                                saveState = true
+                            }
+                            launchSingleTop = true
+                            restoreState = true
+                        }
+                    },
+                    onEditClick = {
+                        // Go back to the Type screen to edit text
+                        navController.popBackStack()
+                    }
                 )
             }
         }

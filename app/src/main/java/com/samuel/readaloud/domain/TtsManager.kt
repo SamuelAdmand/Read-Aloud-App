@@ -17,10 +17,23 @@ import java.io.File
  * Manages the TTS playback queue, buffering logic, and media player.
  * Should be a Singleton (in a real app, injected via Hilt/Koin).
  */
-class TtsManager(
+class TtsManager private constructor(
     private val context: Context,
     private val repository: TtsRepository
 ) {
+    companion object {
+        @Volatile
+        private var instance: TtsManager? = null
+
+        fun getInstance(context: Context): TtsManager {
+            return instance ?: synchronized(this) {
+                instance ?: TtsManager(
+                    context.applicationContext,
+                    TtsRepository()
+                ).also { instance = it }
+            }
+        }
+    }
     private val scope = CoroutineScope(Dispatchers.Main + Job())
     private var mediaPlayer: MediaPlayer? = null
 
@@ -41,6 +54,10 @@ class TtsManager(
     private val _currentTitle = MutableStateFlow("")
     val currentTitle = _currentTitle.asStateFlow()
 
+    // Text Source for Editing
+    var sourceText: String = ""
+        private set
+
     // Speed State
     private var currentSpeed: Float = 1.0f
 
@@ -54,6 +71,7 @@ class TtsManager(
     fun playText(text: String, voice: String) {
         stop() // Reset previous playback
 
+        sourceText = text // Save for editing
         voiceShortName = voice
         _currentTitle.value = text.take(30) + "..." // Simple title for now
 

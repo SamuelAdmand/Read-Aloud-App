@@ -10,29 +10,19 @@ import com.samuel.readaloud.domain.TtsManager
 import com.samuel.readaloud.model.Voice
 import com.samuel.readaloud.repository.TtsRepository
 import com.samuel.readaloud.ui.components.VoiceGroup
-import kotlinx.coroutines.flow.SharingStarted
-import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import java.util.Locale
 
 class TypeViewModel(application: Application) : AndroidViewModel(application) {
 
     private val repository = TtsRepository()
-    private val ttsManager = TtsManager(application, repository)
+    // Use Singleton Instance
+    private val ttsManager = TtsManager.getInstance(application)
     private val preferenceManager = com.samuel.readaloud.data.local.PreferenceManager(application)
+
     // UI State
     var textInput by mutableStateOf("")
         private set
-
-    var isPlayerVisible by mutableStateOf(false)
-        private set
-
-    val isPlaying: StateFlow<Boolean> = ttsManager.isPlaying
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)
-
-    val isLoading: StateFlow<Boolean> = ttsManager.isLoading
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)
 
     // --- Voice & Playback State ---
     var selectedVoiceName by mutableStateOf("Aria (US)")
@@ -83,21 +73,14 @@ class TypeViewModel(application: Application) : AndroidViewModel(application) {
             }
         }
 
-        // 1. Group by Language
         val byLanguage = filtered.groupBy { getLanguageName(it.locale) }
 
-        // 2. Process each language group
         val processedGroups = byLanguage.mapValues { (_, voicesInLang) ->
-            // Group by Region within this language
             val byRegion = voicesInLang.groupBy { getRegionName(it.locale) }
 
             if (byRegion.size == 1) {
-                // Case A: Only one region (e.g., Hindi -> India)
-                // Return just the list of voices directly
                 VoiceGroup.SingleRegion(voicesInLang)
             } else {
-                // Case B: Multiple regions (e.g., English -> US, UK, India)
-                // Sort regions (Pinned first, then Alphabetical)
                 val sortedRegions = byRegion.toSortedMap(compareBy { regionName ->
                     val sampleVoice = byRegion[regionName]?.firstOrNull()
                     val localeCode = sampleVoice?.locale ?: ""
@@ -117,20 +100,14 @@ class TypeViewModel(application: Application) : AndroidViewModel(application) {
         textInput = newText
     }
 
-    fun onConfirmText() {
+    /**
+     * Initializes playback in the TtsManager.
+     * UI should observe this completion to navigate to PlayerScreen.
+     */
+    fun onPlayClicked() {
         if (textInput.isBlank()) return
-        isPlayerVisible = true
         ttsManager.playText(textInput, selectedVoiceId)
         ttsManager.setPlaybackSpeed(playbackSpeed)
-    }
-
-    fun onEditClicked() {
-        ttsManager.stop()
-        isPlayerVisible = false
-    }
-
-    fun onPlayPauseClicked() {
-        ttsManager.togglePlayPause()
     }
 
     fun onSearchQueryChanged(query: String) {
@@ -150,26 +127,18 @@ class TypeViewModel(application: Application) : AndroidViewModel(application) {
     fun onVoiceSelected(voice: Voice) {
         selectedVoiceId = voice.shortName
         selectedVoiceName = voice.name
-
-        if (isPlayerVisible) {
-            ttsManager.stop()
-            ttsManager.playText(textInput, selectedVoiceId)
-            ttsManager.setPlaybackSpeed(playbackSpeed)
-        }
     }
 
     fun onSpeedChanged(newSpeed: Float) {
         playbackSpeed = newSpeed
-
-        ttsManager.setPlaybackSpeed(newSpeed)
     }
+
     fun loadDefaultSettings() {
-        // Only reload if we are not currently in the middle of a session (optional,
-        // but here we force reload to satisfy "Start with settings saved")
         selectedVoiceName = preferenceManager.voiceName
         selectedVoiceId = preferenceManager.voiceId
         playbackSpeed = preferenceManager.playbackSpeed
     }
+
     // --- Helpers ---
 
     private fun getLanguageName(localeString: String): String {
