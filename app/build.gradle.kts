@@ -72,6 +72,8 @@ dependencies {
 
     // Extended Icons (for Home, Settings, etc.)
     implementation(libs.material.icons.extended.android)
+    // Media (for MediaSession and Notification MediaStyle)
+    implementation("androidx.media:media:1.7.0")
 }
 
 chaquopy {

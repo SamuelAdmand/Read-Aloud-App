@@ -12,6 +12,9 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
+import android.content.Intent
+import androidx.core.content.ContextCompat
+import com.samuel.readaloud.service.TtsMediaService
 
 /**
  * Manages the TTS playback queue, buffering logic, and media player.
@@ -82,6 +85,8 @@ class TtsManager private constructor(
     }
 
     fun playText(text: String, voice: String) {
+        // Start Foreground Service to handle media session & notification
+        ContextCompat.startForegroundService(context, Intent(context, TtsMediaService::class.java))
         stop() // Reset previous playback
 
         sourceText = text // Save for editing
@@ -195,5 +200,7 @@ class TtsManager private constructor(
         _isLoading.value = false // Reset loading
         cachedFiles.clear()
         currentChunkIndex = 0
+        // Stop the service
+        context.stopService(Intent(context, TtsMediaService::class.java))
     }
 }

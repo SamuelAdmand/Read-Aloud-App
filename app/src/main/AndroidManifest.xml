@@ -3,6 +3,11 @@
     xmlns:tools="http://schemas.android.com/tools">
 
     <uses-permission android:name="android.permission.INTERNET" />
+    <!-- Required for Background Playback -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
 
     <application
         android:allowBackup="true"
@@ -13,6 +18,7 @@
         android:roundIcon="@mipmap/ic_launcher_round"
         android:supportsRtl="true"
         android:theme="@style/Theme.ReadAloud">
+
         <activity
             android:name=".MainActivity"
             android:exported="true"
@@ -20,10 +26,26 @@
             android:theme="@style/Theme.ReadAloud">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
-
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+
+        <!-- Receiver for Headphone/Notification Buttons -->
+        <receiver
+            android:name="androidx.media.session.MediaButtonReceiver"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MEDIA_BUTTON" />
+            </intent-filter>
+        </receiver>
+
+        <!-- Media Service -->
+        <service
+            android:name=".service.TtsMediaService"
+            android:enabled="true"
+            android:exported="false"
+            android:foregroundServiceType="mediaPlayback" />
+
     </application>
 
 </manifest>
