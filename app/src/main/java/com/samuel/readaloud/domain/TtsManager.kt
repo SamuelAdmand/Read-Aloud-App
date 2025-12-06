@@ -159,24 +159,31 @@ class TtsManager private constructor(
     }
 
     private fun processQueue() {
-        // Check if we reached the end
         if (currentChunkIndex >= chunks.size) {
-            // Playback Finished.
-            // Do NOT clear content, just reset state so user can press Play again.
             stop(clearContent = false)
             return
         }
 
         scope.launch {
             _isLoading.value = true
-            val chunkData = getOrFetchChunk(currentChunkIndex)
+
+            var chunkData: CachedChunk? = null
+            // Skip bad chunks
+            while (chunkData == null && currentChunkIndex < chunks.size) {
+                chunkData = getOrFetchChunk(currentChunkIndex)
+                if (chunkData == null) {
+                    Log.e("TtsManager", "Skipping failed chunk $currentChunkIndex")
+                    currentChunkIndex++
+                }
+            }
+
             _isLoading.value = false
 
             if (chunkData != null) {
                 bufferNextChunks()
                 playFile(chunkData)
             } else {
-                Log.e("TtsManager", "Failed chunk $currentChunkIndex")
+                Log.e("TtsManager", "No playable chunks found.")
                 stop()
             }
         }
@@ -307,25 +314,37 @@ class TtsManager private constructor(
     }
 
     private fun playFile(chunkData: CachedChunk) {
-        mediaPlayer?.release()
         stopMonitoring()
+        mediaPlayer?.release()
+        mediaPlayer = null
 
-        mediaPlayer = MediaPlayer().apply {
-            setDataSource(chunkData.audioFile.absolutePath)
-            prepare()
-            try {
-                playbackParams = playbackParams.setSpeed(currentSpeed)
-            } catch (e: Exception) { }
+        try {
+            mediaPlayer = MediaPlayer().apply {
+                setDataSource(chunkData.audioFile.absolutePath)
+                prepare()
 
-            setOnCompletionListener {
-                currentChunkIndex++
-                processQueue()
+                try {
+                    val params = playbackParams
+                    params.speed = currentSpeed
+                    playbackParams = params
+                } catch (e: Exception) {
+                    Log.w("TtsManager", "Failed to set speed", e)
+                }
+
+                setOnCompletionListener {
+                    currentChunkIndex++
+                    processQueue()
+                }
+
+                start()
             }
-
-            start()
+            _isPlaying.value = true
+            startMonitoring(chunkData.subtitles)
+        } catch (e: Exception) {
+            Log.e("TtsManager", "Playback failed for chunk $currentChunkIndex", e)
+            currentChunkIndex++
+            processQueue()
         }
-        _isPlaying.value = true
-        startMonitoring(chunkData.subtitles)
     }
 
     private fun startMonitoring(subtitles: List<Subtitle>) {
@@ -347,7 +366,6 @@ class TtsManager private constructor(
         monitorJob?.cancel()
         monitorJob = null
     }
-
     fun togglePlayPause() {
         mediaPlayer?.let { player ->
             if (player.isPlaying) {
@@ -356,23 +374,25 @@ class TtsManager private constructor(
                 _isPlaying.value = false
             } else {
                 try {
-                    player.playbackParams = player.playbackParams.setSpeed(currentSpeed)
-                } catch (e: Exception) { }
-                player.start()
-                _isPlaying.value = true
+                    val params = player.playbackParams
+                    params.speed = currentSpeed
+                    player.playbackParams = params
 
-                // Resume monitoring
-                val currentChunk = cachedChunks[currentChunkIndex]
-                if (currentChunk != null) {
-                    startMonitoring(currentChunk.subtitles)
+                    player.start()
+                    _isPlaying.value = true
+
+                    val currentChunk = cachedChunks[currentChunkIndex]
+                    if (currentChunk != null) {
+                        startMonitoring(currentChunk.subtitles)
+                    }
+                    bufferNextChunks()
+                } catch (e: Exception) {
+                    Log.e("TtsManager", "Error resuming playback", e)
+                    processQueue()
                 }
-                bufferNextChunks()
             }
         } ?: run {
-            // Player is null. This happens if we finished playback (Replay case)
-            // or if app was killed and restarted (but data persists in Repo/Manager if not killed).
             if (chunks.isNotEmpty()) {
-                // REPLAY Logic: Start from 0 (which was set by stop(false))
                 processQueue()
             }
         }

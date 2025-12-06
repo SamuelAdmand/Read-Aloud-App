@@ -18,6 +18,7 @@ class PreferenceManager(context: Context) {
         private const val KEY_VOICE_ID = "default_voice_id"
         private const val KEY_VOICE_NAME = "default_voice_name"
         private const val KEY_PLAYBACK_SPEED = "default_playback_speed"
+        private const val KEY_RECENT_VOICES = "recent_voices_list"
 
         // Defaults
         private const val DEFAULT_VOICE_ID = "en-US-AriaNeural"
@@ -36,4 +37,24 @@ class PreferenceManager(context: Context) {
     var playbackSpeed: Float
         get() = prefs.getFloat(KEY_PLAYBACK_SPEED, DEFAULT_SPEED)
         set(value) = prefs.edit().putFloat(KEY_PLAYBACK_SPEED, value).apply()
+
+    // --- Recents Logic ---
+    fun getRecentVoiceIds(): List<String> {
+        val string = prefs.getString(KEY_RECENT_VOICES, "") ?: ""
+        return if (string.isBlank()) emptyList() else string.split(",")
+    }
+
+    fun addRecentVoice(shortName: String) {
+        val current = getRecentVoiceIds().toMutableList()
+        // Remove if exists to move to top (LRU)
+        current.remove(shortName)
+        current.add(0, shortName)
+        // Keep max 5
+        if (current.size > 5) {
+            val subList = current.take(5)
+            prefs.edit().putString(KEY_RECENT_VOICES, subList.joinToString(",")).apply()
+        } else {
+            prefs.edit().putString(KEY_RECENT_VOICES, current.joinToString(",")).apply()
+        }
+    }
 }

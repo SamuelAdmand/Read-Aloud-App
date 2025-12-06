@@ -50,12 +50,14 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.samuel.readaloud.data.local.PreferenceManager
 import com.samuel.readaloud.domain.TtsManager
 import com.samuel.readaloud.model.Voice
 import com.samuel.readaloud.repository.ContentRepository
 import com.samuel.readaloud.repository.TtsRepository
 import com.samuel.readaloud.ui.components.MarkdownTextPlayer
 import com.samuel.readaloud.ui.components.PlayerControls
+import com.samuel.readaloud.ui.components.VoiceSelectionSheetContent
 import kotlinx.coroutines.launch
 import java.util.Locale
 
@@ -85,6 +87,7 @@ fun PlayerScreen(
     var allVoices by remember { mutableStateOf<List<Voice>>(emptyList()) }
     var voiceSearchQuery by remember { mutableStateOf("") }
     val sourceText by ContentRepository.text.collectAsState()
+    val preferenceManager = remember { PreferenceManager(context) }
 
     LaunchedEffect(Unit) {
         try {
@@ -165,17 +168,23 @@ fun PlayerScreen(
                     )
                 }
                 PlayerSheetType.VOICE -> {
-                    VoiceBottomSheetContent(
-                        voices = allVoices,
-                        searchQuery = voiceSearchQuery,
-                        onSearchQueryChange = { voiceSearchQuery = it },
+                    VoiceSelectionSheetContent(
+                        allVoices = allVoices,
+                        currentVoiceId = preferenceManager.voiceId,
                         onVoiceSelected = { voice ->
-                            // Pass current title to preserve it during voice switch
+                            // Update preference
+                            preferenceManager.voiceId = voice.shortName
+                            preferenceManager.voiceName = voice.name
+
+                            // Play with new voice
                             ttsManager.playText(
                                 text = sourceText,
                                 voice = voice.shortName,
                                 title = ContentRepository.getCurrentTitle()
                             )
+                            scope.launch { sheetState.hide() }.invokeOnCompletion { activeSheet = PlayerSheetType.NONE }
+                        },
+                        onDismiss = {
                             scope.launch { sheetState.hide() }.invokeOnCompletion { activeSheet = PlayerSheetType.NONE }
                         }
                     )

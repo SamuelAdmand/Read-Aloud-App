@@ -1,9 +1,11 @@
 package com.samuel.readaloud.ui.components
 
-import androidx.compose.animation.animateContentSize
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -13,205 +15,292 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.VolumeUp
-import androidx.compose.material.icons.filled.ExpandLess
+import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.ExpandMore
-import androidx.compose.material.icons.filled.PushPin
 import androidx.compose.material.icons.filled.Search
-import androidx.compose.material.icons.outlined.PushPin
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilterChip
+import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.SuggestionChip
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.window.Dialog
-import androidx.compose.ui.window.DialogProperties
+import androidx.compose.ui.unit.sp
+import com.samuel.readaloud.data.local.PreferenceManager
 import com.samuel.readaloud.model.Voice
-
-// Moved from TypeViewModel.kt
-sealed interface VoiceGroup {
-    data class SingleRegion(val voices: List<Voice>) : VoiceGroup
-    data class MultiRegion(val regions: Map<String, List<Voice>>) : VoiceGroup
-}
+import java.util.Locale
 
 @Composable
-fun VoiceSelectionDialog(
-    onDismiss: () -> Unit,
-    groupedVoices: Map<String, VoiceGroup>,
-    pinnedRegions: Set<String>,
-    searchQuery: String,
-    onSearchQueryChanged: (String) -> Unit,
-    onTogglePin: (String) -> Unit,
-    onVoiceSelected: (Voice) -> Unit
+fun VoiceSelectionSheetContent(
+    allVoices: List<Voice>,
+    currentVoiceId: String,
+    onVoiceSelected: (Voice) -> Unit,
+    onDismiss: () -> Unit
 ) {
-    Dialog(
-        onDismissRequest = onDismiss,
-        properties = DialogProperties(usePlatformDefaultWidth = false)
-    ) {
-        Card(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(16.dp),
-            shape = RoundedCornerShape(16.dp),
-            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
-        ) {
-            Column(modifier = Modifier.padding(16.dp)) {
-                Text(
-                    text = "Select Voice",
-                    style = MaterialTheme.typography.headlineSmall,
-                    fontWeight = FontWeight.Bold
-                )
-                Spacer(modifier = Modifier.height(12.dp))
+    val context = LocalContext.current
+    val prefs = remember { PreferenceManager(context) }
 
-                OutlinedTextField(
-                    value = searchQuery,
-                    onValueChange = onSearchQueryChanged,
-                    placeholder = { Text("Search Language, Region or Voice...") },
-                    leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(12.dp)
-                )
-                Spacer(modifier = Modifier.height(12.dp))
+    // State
+    var searchQuery by remember { mutableStateOf("") }
+    var isSearching by remember { mutableStateOf(false) }
+    var selectedLanguage by remember { mutableStateOf("English") } // Default
+    var showLanguageList by remember { mutableStateOf(false) }
 
-                LazyColumn(
-                    modifier = Modifier.weight(1f),
-                    verticalArrangement = Arrangement.spacedBy(12.dp)
-                ) {
-                    groupedVoices.forEach { (language, group) ->
-                        item {
-                            Text(
-                                text = language,
-                                style = MaterialTheme.typography.titleMedium,
-                                color = MaterialTheme.colorScheme.primary,
-                                fontWeight = FontWeight.Bold,
-                                modifier = Modifier.padding(bottom = 4.dp, start = 4.dp, top = 4.dp)
-                            )
-                        }
+    // Derived Data
+    val languages = remember(allVoices) {
+        // Priority list based on most spoken languages (ISO 639-1 codes)
+        val priorityCodes = listOf(
+            "en", // English
+            "zh", // Chinese
+            "es", // Spanish
+            "hi", // Hindi
+            "ar", // Arabic
+            "bn", // Bengali
+            "pt", // Portuguese
+            "ru", // Russian
+            "ja", // Japanese
+            "de", // German
+            "fr", // French
+            "ko", // Korean
+            "it", // Italian
+            "tr", // Turkish
+            "vi"  // Vietnamese
+        )
 
-                        when (group) {
-                            is VoiceGroup.SingleRegion -> {
-                                items(group.voices) { voice ->
-                                    VoiceRow(
-                                        voice = voice,
-                                        onClick = {
-                                            onVoiceSelected(voice)
-                                            onDismiss()
-                                        }
-                                    )
-                                }
-                            }
-                            is VoiceGroup.MultiRegion -> {
-                                items(group.regions.keys.toList()) { regionName ->
-                                    val voices = group.regions[regionName] ?: emptyList()
-                                    val locale = voices.firstOrNull()?.locale ?: ""
+        allVoices
+            .map {
+                val loc = try { Locale.forLanguageTag(it.locale) } catch (e: Exception) { Locale.getDefault() }
+                val name = loc.displayLanguage.ifBlank { "Unknown" }
+                val code = loc.language
+                name to code
+            }
+            .distinctBy { it.first } // Unique by Display Name
+            .sortedWith { (nameA, codeA), (nameB, codeB) ->
+                val indexA = priorityCodes.indexOf(codeA)
+                val indexB = priorityCodes.indexOf(codeB)
 
-                                    RegionGroupCard(
-                                        regionName = regionName,
-                                        voices = voices,
-                                        isPinned = pinnedRegions.contains(locale),
-                                        onTogglePin = { onTogglePin(locale) },
-                                        onVoiceSelected = {
-                                            onVoiceSelected(it)
-                                            onDismiss()
-                                        }
-                                    )
-                                }
-                            }
-                        }
-                    }
-                }
-
-                Spacer(modifier = Modifier.height(8.dp))
-                TextButton(
-                    onClick = onDismiss,
-                    modifier = Modifier.align(Alignment.End)
-                ) {
-                    Text("Close")
+                when {
+                    // Both in priority list: sort by index in priority list
+                    indexA != -1 && indexB != -1 -> indexA.compareTo(indexB)
+                    // Only A is in priority list: A comes first
+                    indexA != -1 -> -1
+                    // Only B is in priority list: B comes first
+                    indexB != -1 -> 1
+                    // Neither in priority list: sort alphabetically by name
+                    else -> nameA.compareTo(nameB)
                 }
             }
+            .map { it.first }
+    }
+
+    val recentVoices = remember(allVoices, currentVoiceId) { // Re-calc if current changes to update list potentially
+        val recentIds = prefs.getRecentVoiceIds()
+        recentIds.mapNotNull { id -> allVoices.find { it.shortName == id } }
+    }
+
+    val filteredVoices = remember(allVoices, selectedLanguage, searchQuery) {
+        if (searchQuery.isNotBlank()) {
+            allVoices.filter {
+                it.name.contains(searchQuery, ignoreCase = true) ||
+                        getLanguageName(it.locale).contains(searchQuery, ignoreCase = true)
+            }
+        } else {
+            allVoices.filter { getLanguageName(it.locale) == selectedLanguage }
         }
     }
-}
 
-@Composable
-fun RegionGroupCard(
-    regionName: String,
-    voices: List<Voice>,
-    isPinned: Boolean,
-    onTogglePin: () -> Unit,
-    onVoiceSelected: (Voice) -> Unit
-) {
-    var isExpanded by remember { mutableStateOf(false) }
+    val groupedVoices = remember(filteredVoices) {
+        filteredVoices.groupBy { getRegionName(it.locale) }.toSortedMap()
+    }
 
-    Card(
-        shape = RoundedCornerShape(12.dp),
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceContainerLow
-        ),
+    Column(
         modifier = Modifier
-            .fillMaxWidth()
-            .animateContentSize()
+            .fillMaxSize()
+            .padding(bottom = 16.dp) // Bottom padding
     ) {
-        Column {
+        // --- Header ---
+        if (isSearching) {
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .clickable { isExpanded = !isExpanded }
-                    .padding(horizontal = 12.dp, vertical = 12.dp),
+                    .padding(horizontal = 16.dp, vertical = 8.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                OutlinedTextField(
+                    value = searchQuery,
+                    onValueChange = { searchQuery = it },
+                    placeholder = { Text("Search voices...") },
+                    modifier = Modifier.weight(1f),
+                    singleLine = true,
+                    leadingIcon = { Icon(Icons.Default.Search, null) },
+                    trailingIcon = {
+                        IconButton(onClick = {
+                            isSearching = false
+                            searchQuery = ""
+                        }) {
+                            Icon(Icons.Default.Close, null)
+                        }
+                    }
+                )
+            }
+        } else {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 8.dp),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
-                Text(
-                    text = regionName,
-                    style = MaterialTheme.typography.bodyLarge,
-                    fontWeight = FontWeight.SemiBold
-                )
+                IconButton(onClick = onDismiss) {
+                    Icon(Icons.Default.Close, contentDescription = "Close")
+                }
 
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    IconButton(
-                        onClick = onTogglePin,
-                        modifier = Modifier.size(24.dp)
+                // Language Selector Button
+                Surface(
+                    shape = RoundedCornerShape(20.dp),
+                    color = MaterialTheme.colorScheme.surfaceContainerHighest,
+                    modifier = Modifier
+                        .clickable { showLanguageList = !showLanguageList }
+                        .height(40.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 16.dp),
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
+                        Text(
+                            text = "Languages ($selectedLanguage)",
+                            style = MaterialTheme.typography.labelLarge,
+                            fontWeight = FontWeight.SemiBold,
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                        Spacer(modifier = Modifier.width(4.dp))
                         Icon(
-                            imageVector = if (isPinned) Icons.Filled.PushPin else Icons.Outlined.PushPin,
-                            contentDescription = "Pin Region",
-                            tint = if (isPinned) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.size(18.dp)
+                            imageVector = Icons.Default.ExpandMore,
+                            contentDescription = null,
+                            modifier = Modifier.size(16.dp)
                         )
                     }
-                    Spacer(modifier = Modifier.width(12.dp))
-                    Icon(
-                        imageVector = if (isExpanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
-                        contentDescription = null,
-                        modifier = Modifier.size(20.dp)
+                }
+
+                IconButton(onClick = { isSearching = true }) {
+                    Icon(Icons.Default.Search, contentDescription = "Search")
+                }
+            }
+        }
+
+        // --- Language List (Horizontal) ---
+        if (showLanguageList && !isSearching) {
+            LazyRow(
+                contentPadding = PaddingValues(horizontal = 16.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                modifier = Modifier.padding(bottom = 8.dp)
+            ) {
+                items(languages) { language ->
+                    FilterChip(
+                        selected = language == selectedLanguage,
+                        onClick = {
+                            selectedLanguage = language
+                            // Optional: auto-close list? Keep open for now as per "swipe right and left" feel
+                        },
+                        label = { Text(language) },
+                        colors = FilterChipDefaults.filterChipColors(
+                            selectedContainerColor = MaterialTheme.colorScheme.primaryContainer,
+                            selectedLabelColor = MaterialTheme.colorScheme.onPrimaryContainer
+                        )
+                    )
+                }
+            }
+        }
+
+        HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
+
+        // --- Main Content ---
+        LazyColumn(
+            modifier = Modifier.weight(1f),
+            contentPadding = PaddingValues(bottom = 16.dp)
+        ) {
+            // 1. Recents Section
+            if (recentVoices.isNotEmpty() && searchQuery.isBlank()) {
+                item {
+                    Text(
+                        text = "Recents",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier.padding(horizontal = 24.dp, vertical = 8.dp)
+                    )
+                }
+                item {
+                    LazyRow(
+                        contentPadding = PaddingValues(horizontal = 16.dp),
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        items(recentVoices) { voice ->
+                            RecentVoiceItem(
+                                voice = voice,
+                                isSelected = voice.shortName == currentVoiceId,
+                                onClick = {
+                                    prefs.addRecentVoice(voice.shortName)
+                                    onVoiceSelected(voice)
+                                }
+                            )
+                        }
+                    }
+                    Spacer(modifier = Modifier.height(16.dp))
+                }
+            }
+
+            // 2. Grouped Voices
+            groupedVoices.forEach { (region, voices) ->
+                item {
+                    Text(
+                        text = region,
+                        style = MaterialTheme.typography.labelLarge,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.padding(horizontal = 24.dp, vertical = 12.dp)
+                    )
+                }
+                items(voices) { voice ->
+                    VoiceListItem(
+                        voice = voice,
+                        isSelected = voice.shortName == currentVoiceId,
+                        onClick = {
+                            prefs.addRecentVoice(voice.shortName)
+                            onVoiceSelected(voice)
+                        }
                     )
                 }
             }
 
-            if (isExpanded) {
-                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-                Column(modifier = Modifier.padding(vertical = 4.dp)) {
-                    voices.forEach { voice ->
-                        VoiceRow(
-                            voice = voice,
-                            onClick = { onVoiceSelected(voice) }
-                        )
+            if (filteredVoices.isEmpty()) {
+                item {
+                    Box(modifier = Modifier.fillMaxWidth().padding(32.dp), contentAlignment = Alignment.Center) {
+                        Text("No voices found", color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                 }
             }
@@ -220,34 +309,116 @@ fun RegionGroupCard(
 }
 
 @Composable
-fun VoiceRow(
+fun RecentVoiceItem(
     voice: Voice,
+    isSelected: Boolean,
+    onClick: () -> Unit
+) {
+    Surface(
+        onClick = onClick,
+        shape = RoundedCornerShape(12.dp),
+        color = if (isSelected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceContainerHigh,
+        modifier = Modifier.width(140.dp)
+    ) {
+        Row(
+            modifier = Modifier.padding(12.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            // Avatar Placeholder
+            Box(
+                modifier = Modifier
+                    .size(32.dp)
+                    .clip(CircleShape)
+                    .background(MaterialTheme.colorScheme.surfaceTint.copy(alpha = 0.2f)),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    text = voice.name.take(1),
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.primary
+                )
+            }
+            Spacer(modifier = Modifier.width(12.dp))
+            Column {
+                Text(
+                    text = voice.name.split(" ").firstOrNull() ?: voice.name,
+                    style = MaterialTheme.typography.bodyMedium,
+                    fontWeight = FontWeight.SemiBold,
+                    maxLines = 1
+                )
+                Text(
+                    text = getRegionName(voice.locale),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1
+                )
+            }
+        }
+    }
+}
+
+@Composable
+fun VoiceListItem(
+    voice: Voice,
+    isSelected: Boolean,
     onClick: () -> Unit
 ) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
             .clickable(onClick = onClick)
-            .padding(horizontal = 12.dp, vertical = 8.dp),
+            .padding(horizontal = 24.dp, vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Icon(
-            Icons.AutoMirrored.Filled.VolumeUp,
-            contentDescription = null,
-            modifier = Modifier.size(20.dp),
-            tint = MaterialTheme.colorScheme.primary
-        )
-        Spacer(modifier = Modifier.width(12.dp))
-        Column {
+        // Avatar
+        Box(
+            modifier = Modifier
+                .size(40.dp)
+                .clip(CircleShape)
+                .background(MaterialTheme.colorScheme.surfaceContainerHigh),
+            contentAlignment = Alignment.Center
+        ) {
+            // Initials
+            Text(
+                text = voice.name.take(1),
+                style = MaterialTheme.typography.titleMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+
+        Spacer(modifier = Modifier.width(16.dp))
+
+        Column(modifier = Modifier.weight(1f)) {
             Text(
                 text = voice.name,
-                style = MaterialTheme.typography.bodyMedium
+                style = MaterialTheme.typography.bodyLarge,
+                fontWeight = FontWeight.Medium
             )
             Text(
-                text = voice.gender,
-                style = MaterialTheme.typography.labelSmall,
+                text = "${getRegionName(voice.locale)} • ${voice.gender}",
+                style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+
+        // Checkmark moved to the end
+        if (isSelected) {
+            Spacer(modifier = Modifier.width(16.dp))
+            Icon(
+                imageVector = Icons.Default.CheckCircle,
+                contentDescription = "Selected",
+                tint = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.size(24.dp)
             )
         }
     }
 }
+
+// Helpers
+private fun getLanguageName(locale: String): String = try {
+    Locale.forLanguageTag(locale).displayLanguage.ifBlank { "Unknown" }
+} catch (e: Exception) { "Unknown" }
+
+private fun getRegionName(locale: String): String = try {
+    Locale.forLanguageTag(locale).displayCountry.ifBlank { "Standard" }
+} catch (e: Exception) { "Standard" }
