@@ -217,7 +217,7 @@ fun SpeedBottomSheetContent(
     currentSpeed: Float,
     onSpeedSelected: (Float) -> Unit
 ) {
-    val speeds = listOf(0.5f, 0.75f, 1.0f,1.10f, 1.25f, 1.5f, 2.0f)
+    val speeds = listOf(0.5f, 0.75f, 1.0f,1.05f,1.10f,1.15f,1.20f, 1.25f,1.30f,1.35f,1.40f,1.45f, 1.5f,1.6f,1.7f,1.75f, 2.0f)
 
     Column(modifier = Modifier.padding(bottom = 32.dp)) {
         Text(

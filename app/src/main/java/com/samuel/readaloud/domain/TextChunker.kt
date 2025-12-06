@@ -31,17 +31,12 @@ object TextChunker {
         var end = iterator.next()
 
         while (end != BreakIterator.DONE) {
-            val sentence = text.substring(start, end).trim()
+            // FIX: Do not trim() or modify the text. Keep exact whitespace/newlines.
+            val sentence = text.substring(start, end)
 
-            if (sentence.isNotEmpty()) {
-                if (currentBuffer.isNotEmpty()) {
-                    currentBuffer.append(" ")
-                }
-                currentBuffer.append(sentence)
-            }
+            currentBuffer.append(sentence)
 
             // Check if buffer has reached the target size
-            // We use >= to ensure we don't cut a sentence in half; we always finish the current sentence.
             if (currentBuffer.length >= currentTargetLength) {
                 chunks.add(currentBuffer.toString())
                 currentBuffer.clear()

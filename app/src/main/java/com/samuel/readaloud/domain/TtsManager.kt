@@ -65,9 +65,7 @@ class TtsManager private constructor(
     private var voiceShortName: String = "en-US-AriaNeural"
 
     // Buffering State
-    // Use ConcurrentHashMap for thread safety since multiple coroutines access this
     private val cachedChunks = ConcurrentHashMap<Int, CachedChunk>()
-    // Track which chunks are currently being downloaded to avoid duplicate requests
     private val fetchingIndices = Collections.synchronizedSet(mutableSetOf<Int>())
 
     // UI State
@@ -114,18 +112,13 @@ class TtsManager private constructor(
 
         chunks = TextChunker.chunkText(text)
 
-        // Calculate offsets
+        // FIX: Calculate offsets by accumulation since TextChunker is now lossless.
+        // This prevents "drifting" errors caused by indexOf searching.
         chunkOffsets.clear()
-        var searchIndex = 0
+        var runningOffset = 0
         chunks.forEach { chunk ->
-            val index = sourceText.indexOf(chunk, startIndex = searchIndex)
-            if (index != -1) {
-                chunkOffsets.add(index)
-                searchIndex = index + chunk.length
-            } else {
-                chunkOffsets.add(searchIndex)
-                searchIndex += chunk.length
-            }
+            chunkOffsets.add(runningOffset)
+            runningOffset += chunk.length
         }
 
         currentChunkIndex = 0
@@ -155,15 +148,12 @@ class TtsManager private constructor(
         }
 
         scope.launch {
-            // 1. Get the IMMEDIATE chunk (Block UI if not ready, for low initial latency)
             _isLoading.value = true
             val chunkData = getOrFetchChunk(currentChunkIndex)
             _isLoading.value = false
 
             if (chunkData != null) {
-                // 2. Trigger Background Buffering for subsequent chunks
                 bufferNextChunks()
-
                 playFile(chunkData)
             } else {
                 Log.e("TtsManager", "Failed chunk $currentChunkIndex")
@@ -172,15 +162,11 @@ class TtsManager private constructor(
         }
     }
 
-    /**
-     * Looks ahead and starts downloading future chunks in parallel/background.
-     */
     private fun bufferNextChunks() {
         val start = currentChunkIndex + 1
         val end = (currentChunkIndex + 1 + BUFFER_SIZE).coerceAtMost(chunks.size)
 
         for (i in start until end) {
-            // Only fetch if not already cached and not currently being fetched
             if (!cachedChunks.containsKey(i) && !fetchingIndices.contains(i)) {
                 scope.launch(Dispatchers.IO) {
                     getOrFetchChunk(i)
@@ -189,22 +175,15 @@ class TtsManager private constructor(
         }
     }
 
-    /**
-     * Suspend function that returns the cached chunk data.
-     * If request is already in flight (by bufferNextChunks), it waits for it.
-     */
     private suspend fun getOrFetchChunk(index: Int): CachedChunk? {
-        // Return immediately if available
         if (cachedChunks.containsKey(index)) return cachedChunks[index]
 
-        // Mark as being fetched to prevent duplicate network calls
         fetchingIndices.add(index)
 
         val text = chunks[index]
         val fileName = "chunk_$index.mp3"
         val outputFile = File(context.cacheDir, fileName)
 
-        // Generate Audio and SRT
         val result = repository.generateAudio(text, voiceShortName, outputFile)
 
         fetchingIndices.remove(index)
@@ -212,7 +191,6 @@ class TtsManager private constructor(
         return if (result.isSuccess) {
             val (audio, srt) = result.getOrNull() ?: return null
 
-            // Parse SRT and map to global text
             val globalOffset = chunkOffsets.getOrElse(index) { 0 }
             val subtitles = parseSrt(srt, text, globalOffset)
 
@@ -228,7 +206,6 @@ class TtsManager private constructor(
         val subtitles = mutableListOf<Subtitle>()
         try {
             val content = srtFile.readText()
-            // Regex to match: Index -> Time Range -> Text
             val pattern = Pattern.compile(
                 "(\\d+)\\s+(\\d{2}:\\d{2}:\\d{2},\\d{3})\\s+-->\\s+(\\d{2}:\\d{2}:\\d{2},\\d{3})\\s+(.*?)(?=\\r?\\n\\r?\\n\\d|\\z)",
                 Pattern.DOTALL
@@ -242,32 +219,59 @@ class TtsManager private constructor(
                 val endTimeStr = matcher.group(3)
                 val rawText = matcher.group(4)?.trim() ?: ""
 
-                // Clean text for searching (normalize spaces)
+                // Clean SRT text (single spaces)
                 val cleanText = rawText.replace(Regex("\\s+"), " ").trim()
 
                 val startMillis = parseTimestamp(startTimeStr)
                 val endMillis = parseTimestamp(endTimeStr)
 
-                // Search for this text in the chunk
-                var startIndex = chunkText.indexOf(cleanText, searchIndex)
+                var startIndex = -1
+                var endIndex = -1
 
-                // Fallback: match first few words if exact match fails
+                // 1. Try Fuzzy Regex Match (Handles newlines/tabs in chunkText)
+                try {
+                    // Escape text, then replace spaces with \s+ (one or more whitespace)
+                    val escapedText = Pattern.quote(cleanText)
+                    val regexPattern = escapedText.replace(" ", "\\E\\s+\\Q")
+
+                    val textMatcher = Pattern.compile(regexPattern).matcher(chunkText)
+                    if (textMatcher.find(searchIndex)) {
+                        startIndex = textMatcher.start()
+                        endIndex = textMatcher.end()
+                    }
+                } catch (e: Exception) {
+                    Log.w("TtsManager", "Regex match failed for '$cleanText'", e)
+                }
+
+                // 2. Fallback: Simple Search (if regex fails or text is too simple)
+                if (startIndex == -1) {
+                    startIndex = chunkText.indexOf(cleanText, searchIndex)
+                    if (startIndex != -1) {
+                        endIndex = startIndex + cleanText.length
+                    }
+                }
+
+                // 3. Last Resort Fallback: Match first 3 words
                 if (startIndex == -1 && cleanText.isNotEmpty()) {
                     val firstFewWords = cleanText.split(" ").take(3).joinToString(" ")
                     startIndex = chunkText.indexOf(firstFewWords, searchIndex)
+                    if (startIndex != -1) {
+                        // Estimate end
+                        endIndex = (startIndex + cleanText.length).coerceAtMost(chunkText.length)
+                    }
                 }
 
                 if (startIndex == -1) {
-                    startIndex = searchIndex // Force continue
+                    // Could not find text. Don't update searchIndex to give next subtitle a chance?
+                    // Or advance slightly? Let's keep searchIndex as is.
+                    Log.w("TtsManager", "Could not map text: '$cleanText'")
+                    continue
                 }
 
-                // Initial end index based on what we found
-                var endIndex = (startIndex + cleanText.length).coerceAtMost(chunkText.length)
-
-                // FIX: Greedily include trailing punctuation (.,!?) that might be missing from SRT text
+                // Greedy Punctuation: Include trailing .,!?:;
                 while (endIndex < chunkText.length) {
                     val nextChar = chunkText[endIndex]
-                    if (nextChar == '.' || nextChar == ',' || nextChar == '?' || nextChar == '!' || nextChar == ';' || nextChar == ':') {
+                    if (nextChar in listOf('.', ',', '?', '!', ';', ':')) {
                         endIndex++
                     } else {
                         break
@@ -290,7 +294,6 @@ class TtsManager private constructor(
 
     private fun parseTimestamp(timestamp: String?): Long {
         if (timestamp == null) return 0L
-        // Format: HH:mm:ss,SSS
         try {
             val parts = timestamp.replace(",", ".").split(":")
             if (parts.size == 3) {
@@ -331,24 +334,15 @@ class TtsManager private constructor(
 
     private fun startMonitoring(subtitles: List<Subtitle>) {
         monitorJob = scope.launch {
-            Log.d("TtsManager", "Started monitoring ${subtitles.size} subtitles.")
             while (isActive && mediaPlayer?.isPlaying == true) {
                 val currentPos = mediaPlayer?.currentPosition?.toLong() ?: 0L
-
-                // Find the subtitle active at this timestamp
                 val activeSubtitle = subtitles.find {
                     currentPos >= it.startMillis && currentPos < it.endMillis
                 }
-
-                if (activeSubtitle != null) {
-                    // Only update if changed to avoid state churn
-                    if (_currentHighlight.value != activeSubtitle.globalRange) {
-                        _currentHighlight.value = activeSubtitle.globalRange
-                        // Log.v("TtsManager", "Highlight: ${activeSubtitle.text}")
-                    }
+                if (activeSubtitle != null && _currentHighlight.value != activeSubtitle.globalRange) {
+                    _currentHighlight.value = activeSubtitle.globalRange
                 }
-
-                delay(50) // Check every 50ms
+                delay(50)
             }
         }
     }
@@ -370,14 +364,10 @@ class TtsManager private constructor(
                 } catch (e: Exception) { }
                 it.start()
                 _isPlaying.value = true
-
-                // Resume monitoring
                 val currentChunk = cachedChunks[currentChunkIndex]
                 if (currentChunk != null) {
                     startMonitoring(currentChunk.subtitles)
                 }
-
-                // Resume buffering if needed
                 bufferNextChunks()
             }
         }
