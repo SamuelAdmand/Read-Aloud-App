@@ -6,15 +6,12 @@ import android.media.MediaPlayer
 import android.util.Log
 import androidx.core.content.ContextCompat
 import com.samuel.readaloud.repository.TtsRepository
-import com.samuel.readaloud.repository.WordTimestamp
 import com.samuel.readaloud.service.TtsMediaService
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import java.io.File
 
@@ -42,7 +39,6 @@ class TtsManager private constructor(
     }
     private val scope = CoroutineScope(Dispatchers.Main + Job())
     private var mediaPlayer: MediaPlayer? = null
-    private var monitorJob: Job? = null
 
     // Queue State
     private var chunks: List<String> = emptyList()
@@ -50,8 +46,8 @@ class TtsManager private constructor(
     private var currentChunkIndex = 0
     private var voiceShortName: String = "en-US-AriaNeural"
 
-    // Buffering State
-    private val cachedFiles = mutableMapOf<Int, Pair<File, List<WordTimestamp>>>()
+    // Buffering State: Maps Index -> AudioFile
+    private val cachedFiles = mutableMapOf<Int, File>()
 
     // UI State
     private val _isPlaying = MutableStateFlow(false)
@@ -104,16 +100,14 @@ class TtsManager private constructor(
         chunkOffsets.clear()
         var searchIndex = 0
         chunks.forEach { chunk ->
-            // Try to find the chunk. If chunk contains modified whitespace, this might fail.
-            // We search starting from where the last one ended.
+            // Try to find the chunk starting from where the last one ended.
             val index = sourceText.indexOf(chunk, startIndex = searchIndex)
 
             if (index != -1) {
                 chunkOffsets.add(index)
                 searchIndex = index + chunk.length
             } else {
-                // Fallback: Just assume it follows the previous one.
-                // This ensures we at least have valid indices for the UI to try rendering.
+                // Fallback: Just assume it follows the previous one if exact match fails
                 chunkOffsets.add(searchIndex)
                 searchIndex += chunk.length
             }
@@ -129,7 +123,6 @@ class TtsManager private constructor(
 
 
     private fun resetPlaybackState() {
-        monitorJob?.cancel()
         mediaPlayer?.release()
         mediaPlayer = null
         _isPlaying.value = false
@@ -147,50 +140,62 @@ class TtsManager private constructor(
 
         scope.launch {
             _isLoading.value = true
-            val data = getOrFetchChunk(currentChunkIndex)
+            val file = getOrFetchChunk(currentChunkIndex)
             _isLoading.value = false
 
-            if (data != null) {
-                val (file, timestamps) = data
-                playFile(file, timestamps)
+            if (file != null) {
+                // Update Highlight IMMEDIATELY when we prepare to play this chunk
+                updateHighlightForChunk(currentChunkIndex)
 
+                playFile(file)
+
+                // Pre-fetch next
                 if (currentChunkIndex + 1 < chunks.size) {
                     launch(Dispatchers.IO) {
                         getOrFetchChunk(currentChunkIndex + 1)
                     }
                 }
             } else {
-                Log.e("TtsManager", "Failed to generate audio for chunk $currentChunkIndex")
+                Log.e("TtsManager", "Failed chunk $currentChunkIndex")
                 stop()
             }
         }
     }
 
-    private suspend fun getOrFetchChunk(index: Int): Pair<File, List<WordTimestamp>>? {
+    private fun updateHighlightForChunk(index: Int) {
+        if (index in chunkOffsets.indices) {
+            val start = chunkOffsets[index]
+            // The highlight ends where the chunk text ends
+            val chunkLength = chunks[index].length
+            val end = start + chunkLength
+
+            _currentHighlight.value = HighlightRange(start, end)
+        }
+    }
+
+    private suspend fun getOrFetchChunk(index: Int): File? {
         if (cachedFiles.containsKey(index)) return cachedFiles[index]
 
         val text = chunks[index]
         val fileName = "chunk_$index.mp3"
         val outputFile = File(context.cacheDir, fileName)
 
+        // Note: TtsRepository must be updated to return Result<File> as requested in previous steps
         val result = repository.generateAudio(text, voiceShortName, outputFile)
 
         return if (result.isSuccess) {
-            val data = result.getOrNull()
-            if (data != null) {
-                cachedFiles[index] = data
-                data
+            val file = result.getOrNull()
+            if (file != null) {
+                cachedFiles[index] = file
+                file
             } else null
         } else {
             null
         }
     }
 
-    private fun playFile(file: File, timestamps: List<WordTimestamp>) {
-        monitorJob?.cancel()
+    private fun playFile(file: File) {
         mediaPlayer?.release()
-
-        Log.d("TtsManager", "Playing file with ${timestamps.size} timestamps")
 
         mediaPlayer = MediaPlayer().apply {
             setDataSource(file.absolutePath)
@@ -209,28 +214,6 @@ class TtsManager private constructor(
             start()
         }
         _isPlaying.value = true
-        startProgressMonitor(timestamps)
-    }
-
-    private fun startProgressMonitor(timestamps: List<WordTimestamp>) {
-        monitorJob = scope.launch {
-            while (isActive && mediaPlayer?.isPlaying == true) {
-                val currentPosSeconds = (mediaPlayer?.currentPosition ?: 0) / 1000f
-
-                val word = timestamps.firstOrNull {
-                    currentPosSeconds >= it.start && currentPosSeconds <= it.end
-                }
-
-                if (word != null) {
-                    val chunkOffset = chunkOffsets.getOrElse(currentChunkIndex) { 0 }
-                    val start = chunkOffset + word.textOffset
-                    val end = start + word.wordLen
-                    _currentHighlight.value = HighlightRange(start, end)
-                }
-
-                delay(30)
-            }
-        }
     }
 
     fun togglePlayPause() {
@@ -238,7 +221,6 @@ class TtsManager private constructor(
             if (it.isPlaying) {
                 it.pause()
                 _isPlaying.value = false
-                monitorJob?.cancel()
             } else {
                 try {
                     it.playbackParams = it.playbackParams.setSpeed(currentSpeed)
@@ -248,8 +230,8 @@ class TtsManager private constructor(
                 it.start()
                 _isPlaying.value = true
 
-                val timestamps = cachedFiles[currentChunkIndex]?.second ?: emptyList()
-                startProgressMonitor(timestamps)
+                // Ensure highlight is set when resuming
+                updateHighlightForChunk(currentChunkIndex)
             }
         }
     }

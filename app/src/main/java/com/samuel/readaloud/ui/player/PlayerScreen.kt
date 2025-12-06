@@ -103,14 +103,20 @@ fun PlayerScreen(
 
             currentHighlight?.let { range ->
                 val start = range.start.coerceIn(0, text.length)
-                val end = range.end.coerceIn(0, text.length)
+                // We trim the end to avoid highlighting trailing newlines which cause the "bleeding" look
+                var end = range.end.coerceIn(0, text.length)
+
+                // Adjustment: Don't highlight trailing whitespace
+                while (end > start && text[end - 1].isWhitespace()) {
+                    end--
+                }
 
                 if (start < end) {
                     addStyle(
                         style = SpanStyle(
-                            background = Color.Red.copy(alpha = 0.4f),
-                            fontWeight = FontWeight.Bold,
-                            color = Color.Black
+                            background = Color(0xFFFFF176).copy(alpha = 0.6f), // Clean Yellow
+                            color = Color.Black,
+                            fontWeight = FontWeight.SemiBold
                         ),
                         start = start,
                         end = end

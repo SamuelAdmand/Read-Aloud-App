@@ -71,11 +71,10 @@ class HomeViewModel(
             isGenerating = true
             val outputFile = File(cacheDir, "tts_test.mp3")
 
-            // Use the selected voice's shortName
             val result = repository.generateAudio(textInput, voice.shortName, outputFile)
 
-            result.onSuccess { (file, _) ->
-                // We destructured the Pair to get just the file, ignoring timestamps for this screen
+            // FIX: Directly use the file, no destructuring
+            result.onSuccess { file ->
                 playAudio(file)
             }.onFailure {
                 it.printStackTrace()
@@ -85,7 +84,6 @@ class HomeViewModel(
     }
 
     private fun playAudio(file: File) {
-        // Always release the previous player to free resources
         mediaPlayer?.release()
 
         mediaPlayer = MediaPlayer().apply {
