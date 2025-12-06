@@ -68,7 +68,7 @@ import com.samuel.readaloud.ui.components.UrlInputDialog
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun MainScreen() {
+fun MainScreen(intentSharedUrl: String? = null) {
     val navController = rememberNavController()
     var showBottomSheet by remember { mutableStateOf(false) }
     val sheetState = rememberModalBottomSheetState()

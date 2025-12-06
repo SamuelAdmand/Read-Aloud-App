@@ -2,4 +2,13 @@
 <resources>
 
     <style name="Theme.ReadAloud" parent="android:Theme.Material.Light.NoActionBar" />
+
+    <!-- Transparent Theme for ShareActivity -->
+    <style name="Theme.ReadAloud.Dialog" parent="Theme.ReadAloud">
+        <item name="android:windowIsTranslucent">true</item>
+        <item name="android:windowBackground">@android:color/transparent</item>
+        <item name="android:windowContentOverlay">@null</item>
+        <item name="android:backgroundDimEnabled">true</item>
+        <item name="android:windowNoTitle">true</item>
+    </style>
 </resources>
