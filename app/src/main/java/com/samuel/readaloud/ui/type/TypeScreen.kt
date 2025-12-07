@@ -33,7 +33,7 @@ import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
-import com.samuel.readaloud.ui.components.SpeedSelectionDialog
+import com.samuel.readaloud.ui.components.SpeedSelectionSheetContent
 import com.samuel.readaloud.ui.components.VoiceSelectionSheetContent
 import kotlinx.coroutines.launch
 
@@ -165,10 +165,16 @@ fun TypeScreen(
     }
 
     if (showSpeedDialog) {
-        SpeedSelectionDialog(
-            currentSpeed = viewModel.playbackSpeed,
-            onSpeedChange = viewModel::onSpeedChanged,
-            onDismiss = { showSpeedDialog = false }
-        )
+        ModalBottomSheet(
+            onDismissRequest = { showSpeedDialog = false },
+            sheetState = sheetState
+        ) {
+            SpeedSelectionSheetContent(
+                currentSpeed = viewModel.playbackSpeed,
+                onSpeedSelected = { speed ->
+                    viewModel.onSpeedChanged(speed)
+                }
+            )
+        }
     }
 }

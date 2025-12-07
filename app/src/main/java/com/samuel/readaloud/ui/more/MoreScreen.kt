@@ -27,7 +27,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
-import com.samuel.readaloud.ui.components.SpeedSelectionDialog
+import com.samuel.readaloud.ui.components.SpeedSelectionSheetContent
 import com.samuel.readaloud.ui.components.VoiceSelectionSheetContent
 import kotlinx.coroutines.launch
 
@@ -96,11 +96,17 @@ fun MoreScreen(
     }
 
     if (showSpeedDialog) {
-        SpeedSelectionDialog(
-            currentSpeed = viewModel.defaultSpeed,
-            onSpeedChange = viewModel::onSpeedChanged,
-            onDismiss = { showSpeedDialog = false }
-        )
+        ModalBottomSheet(
+            onDismissRequest = { showSpeedDialog = false },
+            sheetState = sheetState
+        ) {
+            SpeedSelectionSheetContent(
+                currentSpeed = viewModel.defaultSpeed,
+                onSpeedSelected = { speed ->
+                    viewModel.onSpeedChanged(speed)
+                }
+            )
+        }
     }
 }
 
