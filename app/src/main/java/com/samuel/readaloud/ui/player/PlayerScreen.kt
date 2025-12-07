@@ -162,13 +162,9 @@ fun PlayerScreen(
                             preferenceManager.voiceId = voice.shortName
                             preferenceManager.voiceName = voice.name
 
-                            // Play with new voice
-                            ttsManager.playText(
-                                text = sourceText,
-                                voice = voice.shortName,
-                                title = ContentRepository.getCurrentTitle(),
-                                sourceUrl = ContentRepository.getCurrentUrl()
-                            )
+                            // Switch voice seamlessly
+                            ttsManager.updateVoice(voice.shortName)
+
                             scope.launch { sheetState.hide() }.invokeOnCompletion { activeSheet = PlayerSheetType.NONE }
                         },
                         onDismiss = {

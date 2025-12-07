@@ -37,7 +37,8 @@ data class Subtitle(
 
 data class CachedChunk(
     val audioFile: File,
-    val subtitles: List<Subtitle>
+    val subtitles: List<Subtitle>,
+    val voiceId: String
 )
 
 class TtsManager private constructor(
@@ -217,6 +218,41 @@ class TtsManager private constructor(
         }
     }
 
+    fun updateVoice(newVoice: String) {
+        if (voiceShortName == newVoice) return
+
+        // 1. Capture current position
+        val currentGlobalIndex = _currentHighlight.value?.start
+            ?: chunkOffsets.getOrElse(currentChunkIndex) { 0 }
+
+        // 2. Update voice identifier
+        voiceShortName = newVoice
+
+        // 3. Stop current playback but keep text state
+        stopMonitoring()
+        if (mediaPlayer?.isPlaying == true) {
+            mediaPlayer?.stop()
+        }
+        mediaPlayer?.release()
+        mediaPlayer = null
+        _isPlaying.value = false
+
+        // 4. Clear audio cache (invalidate old voice chunks)
+        // Note: We do not clear 'chunks' or 'chunkOffsets' as text is unchanged.
+        cachedChunks.clear()
+        fetchingIndices.clear()
+
+        // 5. Calculate new chunk index based on global position
+        val newChunkIndex = chunkOffsets.indexOfLast { it <= currentGlobalIndex }
+        currentChunkIndex = if (newChunkIndex >= 0) newChunkIndex else 0
+
+        // 6. Set pending seek so playback resumes at the exact word
+        pendingSeekGlobalIndex = currentGlobalIndex
+
+        // 7. Resume playback with new voice
+        processQueue()
+    }
+
     /**
      * Resets player state.
      * @param clearContent If true, wipes the text chunks (New Song).
@@ -266,12 +302,21 @@ class TtsManager private constructor(
         scope.launch {
             _isLoading.value = true
 
+            // Inside processQueue -> scope.launch:
+
             var chunkData: CachedChunk? = null
-            // Skip bad chunks
+            // Skip bad chunks or chunks from previous voice
             while (chunkData == null && currentChunkIndex < chunks.size) {
                 chunkData = getOrFetchChunk(currentChunkIndex)
+
+                // Validation: Discard chunk if it doesn't match current voice
+                if (chunkData != null && chunkData.voiceId != voiceShortName) {
+                    cachedChunks.remove(currentChunkIndex)
+                    chunkData = null
+                }
+
                 if (chunkData == null) {
-                    Log.e("TtsManager", "Skipping failed chunk $currentChunkIndex")
+                    Log.e("TtsManager", "Skipping failed or stale chunk $currentChunkIndex")
                     currentChunkIndex++
                 }
             }
@@ -314,20 +359,28 @@ class TtsManager private constructor(
     }
 
     private suspend fun getOrFetchChunk(index: Int): CachedChunk? {
-        // Safety check: if chunks were cleared during fetch
         if (index >= chunks.size) return null
 
-        if (cachedChunks.containsKey(index)) return cachedChunks[index]
+        // Check cache with voice validation
+        if (cachedChunks.containsKey(index)) {
+            val chunk = cachedChunks[index]
+            if (chunk?.voiceId == voiceShortName) {
+                return chunk
+            } else {
+                cachedChunks.remove(index) // Remove stale voice chunk
+            }
+        }
 
         fetchingIndices.add(index)
+
+        // Capture voice at start of operation
+        val targetVoice = voiceShortName
 
         val text = chunks[index]
         val ttsText = TextChunker.sanitizeMarkdownForTts(text)
 
-        // Persistent File Naming: article_{id}_v{voiceHash}_chunk_{index}.mp3
-        // We include voice hash to ensure changing voice generates new audio.
         val audioDir = File(context.filesDir, "audio_cache").apply { mkdirs() }
-        val voiceHash = voiceShortName.hashCode()
+        val voiceHash = targetVoice.hashCode()
 
         val baseName = if (currentArticleId != -1L) {
             "article_${currentArticleId}_v${voiceHash}_chunk_$index"
@@ -337,19 +390,15 @@ class TtsManager private constructor(
 
         val outputFile = File(audioDir, "$baseName.mp3")
 
-        // If file exists, we skip generation (Offline Support)
         val result = if (outputFile.exists() && outputFile.length() > 0) {
-            // Check for sidecar SRT
             val srtFile = File(audioDir, "$baseName.mp3.srt")
             if (srtFile.exists()) {
                 Result.success(Pair(outputFile, srtFile))
             } else {
-                // Audio exists but SRT missing? Regenerate to be safe or just generate SRT?
-                // For simplicity, regenerate both if one is missing to ensure sync.
-                repository.generateAudio(ttsText, voiceShortName, outputFile)
+                repository.generateAudio(ttsText, targetVoice, outputFile)
             }
         } else {
-            repository.generateAudio(ttsText, voiceShortName, outputFile)
+            repository.generateAudio(ttsText, targetVoice, outputFile)
         }
 
         fetchingIndices.remove(index)
@@ -360,8 +409,12 @@ class TtsManager private constructor(
             val globalOffset = chunkOffsets.getOrElse(index) { 0 }
             val subtitles = parseSrt(srt, text, globalOffset)
 
-            val cachedChunk = CachedChunk(audio, subtitles)
-            cachedChunks[index] = cachedChunk
+            val cachedChunk = CachedChunk(audio, subtitles, targetVoice)
+
+            // Only cache if the voice hasn't changed again while we were downloading
+            if (targetVoice == voiceShortName) {
+                cachedChunks[index] = cachedChunk
+            }
             cachedChunk
         } else {
             null
