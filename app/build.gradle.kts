@@ -6,18 +6,49 @@ plugins {
     alias(libs.plugins.ksp)
 }
 
+// --- Dynamic Build Configuration ---
+val baseNamespace = "com.samuel.readaloud"
+val baseAppName = "Read Aloud"
+
+// --- Make changes to following code before commiting anything -----
+val myAppId = "com.samuel.readaloud" // Change this to .debug, .staging, or remove suffix for release
+val myAppVersionCode = 1
+val appVersion = "1.0.0"
+// --- End of the code ----
+
 android {
-    namespace = "com.samuel.readaloud"
+    namespace = baseNamespace
     compileSdk {
         version = release(36)
     }
 
     defaultConfig {
-        applicationId = "com.samuel.readaloud"
+        applicationId = myAppId
         minSdk = 30
         targetSdk = 36
-        versionCode = 1
-        versionName = "1.0"
+        versionCode = myAppVersionCode
+
+        // --- VERSION NAME LOGIC ---
+        val suffix = myAppId.removePrefix(baseNamespace)
+
+        versionName = if (suffix.isNotEmpty()) {
+            // Converts ".beta" -> "-beta" and appends to version
+            "$appVersion${suffix.replaceFirst(".", "-")}"
+        } else {
+            appVersion
+        }
+
+        // --- APP NAME LOGIC ---
+        val finalAppName = if (suffix.isNotEmpty()) {
+            // 1. Remove dot. 2. Capitalize (e.g., ".beta" -> "Beta")
+            val cleanSuffix = suffix.replace(".", "").replaceFirstChar { it.uppercase() }
+            "RA $cleanSuffix"
+        } else {
+            baseAppName
+        }
+
+        // Inject app_name resource dynamically
+        resValue("string", "app_name", finalAppName)
 
         ndk {
             abiFilters += listOf("armeabi-v7a", "arm64-v8a", "x86", "x86_64")
@@ -89,15 +120,15 @@ dependencies {
     implementation("androidx.media:media:1.7.1")
     // Markdown Renderer
     implementation("com.mikepenz:multiplatform-markdown-renderer-android:0.38.1")
-    // Room Database (Updated for Kotlin 2.x compatibility)
+    // Room Database
     implementation("androidx.room:room-runtime:2.8.4")
     implementation("androidx.room:room-ktx:2.8.4")
     ksp("androidx.room:room-compiler:2.8.4")
 
-    // WorkManager for background downloading
+    // WorkManager
     implementation("androidx.work:work-runtime-ktx:2.11.0")
 
-    // Gson for JSON serialization (if needed for complex data)
+    // Gson
     implementation("com.google.code.gson:gson:2.13.2")
 }
 

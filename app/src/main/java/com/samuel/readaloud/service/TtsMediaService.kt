@@ -81,9 +81,13 @@ class TtsMediaService : Service() {
                         ttsManager.stop()
                         stopSelf()
                     }
-                    // TODO: Implement logic in TtsManager to handle these
-                    override fun onSkipToNext() { }
-                    override fun onSkipToPrevious() { }
+                    // Updated implementation
+                    override fun onSkipToNext() {
+                        ttsManager.skipNext()
+                    }
+                    override fun onSkipToPrevious() {
+                        ttsManager.skipPrevious()
+                    }
                 })
                 isActive = true
             }
