@@ -216,7 +216,7 @@ data class RenderResult(
 
 object MarkdownParser {
     // Same Regex Patterns as before
-    private val HEADER = Pattern.compile("(?m)^(#{1,3})[ \\t]+(.*?)$")
+    private val HEADER = Pattern.compile("(?m)^(#{1,6})[ \\t]+(.*?)$")
     private val BLOCKQUOTE = Pattern.compile("(?m)^>[ \\t]+(.*?)$")
     private val LIST_ITEM = Pattern.compile("(?m)^[ \\t]*([-*+]|\\d+\\.)\\s+(.*)$")
     private val LINK = Pattern.compile("\\[([^\\]]*)\\]\\(([^)]*)\\)")
@@ -234,7 +234,12 @@ object MarkdownParser {
             val contentStart = m.start(2)
             add(StyleRange(m.start(), contentStart, isHidden = true))
             val size = when(hashes.length) {
-                1 -> 26.sp; 2 -> 23.sp; else -> 20.sp
+                1 -> 26.sp
+                2 -> 23.sp
+                3 -> 20.sp
+                4 -> 18.sp
+                5 -> 17.sp
+                else -> 16.sp
             }
             add(StyleRange(contentStart, m.end(), SpanStyle(fontSize = size, fontWeight = FontWeight.Bold)))
         }
