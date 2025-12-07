@@ -24,6 +24,7 @@ import java.util.regex.Pattern
 import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.WorkManager
 import androidx.work.workDataOf
+import com.samuel.readaloud.data.local.PreferenceManager
 import com.samuel.readaloud.worker.DownloadWorker
 
 data class HighlightRange(val start: Int, val end: Int)
@@ -46,6 +47,7 @@ class TtsManager private constructor(
     private val repository: TtsRepository
 ) {
     private val libraryRepository = LibraryRepository(context)
+    private val preferenceManager = PreferenceManager(context)
     private var currentArticleId: Long = -1L
     companion object {
         @Volatile
@@ -83,19 +85,30 @@ class TtsManager private constructor(
     val isSaved = _isSaved.asStateFlow()
     private val _isLoading = MutableStateFlow(false)
     val isLoading = _isLoading.asStateFlow()
-
     private val _currentTitle = MutableStateFlow("")
     val currentTitle = _currentTitle.asStateFlow()
 
     private val _currentHighlight = MutableStateFlow<HighlightRange?>(null)
     val currentHighlight = _currentHighlight.asStateFlow()
 
-    private var currentSpeed: Float = 1.0f
     private var pendingSeekGlobalIndex: Int? = null
+
+    private val _currentSpeed = MutableStateFlow(1.0f)
+    val currentSpeed = _currentSpeed.asStateFlow()
+
+    private val _currentVoiceId = MutableStateFlow("en-US-AriaNeural")
+    val currentVoiceId = _currentVoiceId.asStateFlow()
+
     fun setPlaybackSpeed(speed: Float) {
-        currentSpeed = speed
+        _currentSpeed.value = speed
         if (mediaPlayer?.isPlaying == true) {
-            mediaPlayer?.playbackParams = mediaPlayer?.playbackParams?.setSpeed(speed) ?: android.media.PlaybackParams().setSpeed(speed)
+            try {
+                val params = mediaPlayer?.playbackParams ?: android.media.PlaybackParams()
+                params.speed = speed
+                mediaPlayer?.playbackParams = params
+            } catch (e: Exception) {
+                Log.w("TtsManager", "Failed to set speed", e)
+            }
         }
     }
     fun seekToLocation(globalIndex: Int) {
@@ -180,7 +193,9 @@ class TtsManager private constructor(
     fun playText(text: String, voice: String, title: String = "", sourceUrl: String? = null) {
         // 1. Graceful Transition: Hard reset (clear content) before starting new
         resetPlaybackState(clearContent = true)
-
+        // 2. Reset Session Settings to Defaults
+        val defaultSpeed = preferenceManager.playbackSpeed
+        setPlaybackSpeed(defaultSpeed)
         // Sync with repository
         ContentRepository.updateContent(text, title)
         _currentTitle.value = ContentRepository.getCurrentTitle()
@@ -189,7 +204,7 @@ class TtsManager private constructor(
         ContextCompat.startForegroundService(context, Intent(context, TtsMediaService::class.java))
 
         voiceShortName = voice
-
+        _currentVoiceId.value = voice
         // Chunk text first
         chunks = TextChunker.chunkText(text)
 
@@ -227,7 +242,7 @@ class TtsManager private constructor(
 
         // 2. Update voice identifier
         voiceShortName = newVoice
-
+        _currentVoiceId.value = newVoice
         // 3. Stop current playback but keep text state
         stopMonitoring()
         if (mediaPlayer?.isPlaying == true) {
@@ -512,7 +527,7 @@ class TtsManager private constructor(
 
                 try {
                     val params = playbackParams
-                    params.speed = currentSpeed
+                    params.speed = _currentSpeed.value // Changed here
                     playbackParams = params
                 } catch (e: Exception) {
                     Log.w("TtsManager", "Failed to set speed", e)
@@ -573,7 +588,7 @@ class TtsManager private constructor(
             } else {
                 try {
                     val params = player.playbackParams
-                    params.speed = currentSpeed
+                    params.speed = _currentSpeed.value
                     player.playbackParams = params
 
                     player.start()

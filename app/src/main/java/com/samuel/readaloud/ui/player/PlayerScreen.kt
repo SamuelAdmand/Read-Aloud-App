@@ -60,12 +60,13 @@ fun PlayerScreen(
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     var activeSheet by remember { mutableStateOf(PlayerSheetType.NONE) }
     val scope = rememberCoroutineScope()
-
-    var playbackSpeed by remember { mutableFloatStateOf(1.0f) }
     var allVoices by remember { mutableStateOf<List<Voice>>(emptyList()) }
     var voiceSearchQuery by remember { mutableStateOf("") }
     val sourceText by ContentRepository.text.collectAsState()
     val preferenceManager = remember { PreferenceManager(context) }
+    // Observe values from TtsManager
+    val playbackSpeed by ttsManager.currentSpeed.collectAsState()
+    val currentVoiceId by ttsManager.currentVoiceId.collectAsState()
 
     LaunchedEffect(Unit) {
         try {
@@ -141,7 +142,6 @@ fun PlayerScreen(
                     SpeedSelectionSheetContent(
                         currentSpeed = playbackSpeed,
                         onSpeedSelected = { speed ->
-                            playbackSpeed = speed
                             ttsManager.setPlaybackSpeed(speed)
                         }
                     )
@@ -149,15 +149,9 @@ fun PlayerScreen(
                 PlayerSheetType.VOICE -> {
                     VoiceSelectionSheetContent(
                         allVoices = allVoices,
-                        currentVoiceId = preferenceManager.voiceId,
+                        currentVoiceId = currentVoiceId, // Uses observed value (session state)
                         onVoiceSelected = { voice ->
-                            // Update preference
-                            preferenceManager.voiceId = voice.shortName
-                            preferenceManager.voiceName = voice.name
-
-                            // Switch voice seamlessly
                             ttsManager.updateVoice(voice.shortName)
-
                             scope.launch { sheetState.hide() }.invokeOnCompletion { activeSheet = PlayerSheetType.NONE }
                         },
                         onDismiss = {
