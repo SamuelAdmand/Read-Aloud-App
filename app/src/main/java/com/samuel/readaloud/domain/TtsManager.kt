@@ -233,13 +233,15 @@ class TtsManager private constructor(
         val text = chunks[index]
         val ttsText = TextChunker.sanitizeMarkdownForTts(text)
 
-        // Persistent File Naming: article_{id}_chunk_{index}.mp3
-        // If articleId is not yet set (race condition), fallback to hash (temp cache)
+        // Persistent File Naming: article_{id}_v{voiceHash}_chunk_{index}.mp3
+        // We include voice hash to ensure changing voice generates new audio.
         val audioDir = File(context.filesDir, "audio_cache").apply { mkdirs() }
+        val voiceHash = voiceShortName.hashCode()
+
         val baseName = if (currentArticleId != -1L) {
-            "article_${currentArticleId}_chunk_$index"
+            "article_${currentArticleId}_v${voiceHash}_chunk_$index"
         } else {
-            "temp_chunk_${text.hashCode()}"
+            "temp_chunk_${text.hashCode()}_v${voiceHash}"
         }
 
         val outputFile = File(audioDir, "$baseName.mp3")

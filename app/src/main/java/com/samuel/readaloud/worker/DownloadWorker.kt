@@ -40,10 +40,13 @@ class DownloadWorker(
         var successCount = 0
 
         try {
+            val voiceHash = voiceName.hashCode()
+
             for ((index, text) in chunks.withIndex()) {
                 if (isStopped) break
 
-                val baseName = "article_${articleId}_chunk_$index"
+                // Match TtsManager naming: article_{id}_v{voiceHash}_chunk_{index}
+                val baseName = "article_${articleId}_v${voiceHash}_chunk_$index"
                 val outputFile = File(audioDir, "$baseName.mp3")
                 val srtFile = File(audioDir, "$baseName.mp3.srt")
 

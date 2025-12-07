@@ -83,7 +83,6 @@ fun PlayerScreen(
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     var activeSheet by remember { mutableStateOf(PlayerSheetType.NONE) }
     val scope = rememberCoroutineScope()
-    val scrollState = rememberScrollState()
 
     var playbackSpeed by remember { mutableFloatStateOf(1.0f) }
     var allVoices by remember { mutableStateOf<List<Voice>>(emptyList()) }
@@ -142,18 +141,14 @@ fun PlayerScreen(
                 .fillMaxSize()
                 .padding(horizontal = 24.dp)
         ) {
-            Column(
+            // MarkdownTextPlayer now handles its own scrolling via LazyColumn
+            MarkdownTextPlayer(
+                rawText = sourceText,
+                currentHighlight = currentHighlight,
                 modifier = Modifier
                     .weight(1f)
-                    .verticalScroll(scrollState)
-            ) {
-                // Use the new robust Markdown renderer
-                MarkdownTextPlayer(
-                    rawText = sourceText,
-                    currentHighlight = currentHighlight,
-                    modifier = Modifier.padding(vertical = 16.dp)
-                )
-            }
+                    .padding(vertical = 16.dp)
+            )
         }
     }
 

@@ -2,58 +2,111 @@ package com.samuel.readaloud.domain
 
 import java.text.BreakIterator
 import java.util.Locale
+import java.util.regex.Pattern
 
 object TextChunker {
 
+    private const val TARGET_CHUNK_SIZE = 600
+    private const val MIN_CHUNK_SIZE = 100 // For the very first chunk (fast start)
+
     /**
-     * Splits text into chunks using a Dynamic Buffering strategy.
+     * Optimized splitting strategy for large articles (e.g., Wikipedia).
      *
-     * 1. **Chunk 0 (Fast Start)**: Capped at ~100 characters. Ensures playback starts instantly.
-     * 2. **Chunk 1+ (Batching)**: Accumulates text up to ~500 characters.
-     *    - This drastically reduces network requests.
-     *    - It heals "False Splits" (like "U.S.") by sending them together in one request to the TTS engine.
+     * 1. **Paragraph Split**: First, split by double newlines (`\n\n`). This is fast and prevents
+     *    running the heavy BreakIterator on the entire massive string at once.
+     * 2. **Refinement**: If a paragraph is small, use it. If it's huge, split it further by sentences.
+     * 3. **Batching**: Group small paragraphs together to reduce network requests.
      */
     fun chunkText(text: String): List<String> {
         if (text.isBlank()) return emptyList()
 
         val chunks = mutableListOf<String>()
-        val iterator = BreakIterator.getSentenceInstance(Locale.US)
-        iterator.setText(text)
 
-        val currentBuffer = StringBuilder()
+        // 1. Split by Paragraphs first (Fast)
+        // We use a Regex to find paragraph boundaries
+        val paragraphPattern = Pattern.compile("\\n\\s*\\n")
+        val matcher = paragraphPattern.matcher(text)
 
-        // Initial limit is small for low latency.
-        // Subsequent limits are large for efficiency and context preservation.
-        var currentTargetLength = 100
-        val batchTargetLength = 600
+        var currentStart = 0
+        val paragraphs = mutableListOf<String>()
 
-        var start = iterator.first()
-        var end = iterator.next()
-
-        while (end != BreakIterator.DONE) {
-            // FIX: Do not trim() or modify the text. Keep exact whitespace/newlines.
-            val sentence = text.substring(start, end)
-
-            currentBuffer.append(sentence)
-
-            // Check if buffer has reached the target size
-            if (currentBuffer.length >= currentTargetLength) {
-                chunks.add(currentBuffer.toString())
-                currentBuffer.clear()
-
-                // Switch to larger batching for the rest of the text
-                currentTargetLength = batchTargetLength
-            }
-
-            start = end
-            end = iterator.next()
+        while (matcher.find()) {
+            paragraphs.add(text.substring(currentStart, matcher.start()))
+            // We include the newlines in the next chunk or handle them implicitly?
+            // To keep context flow, we treat the delimiter as a separator.
+            currentStart = matcher.end()
+        }
+        if (currentStart < text.length) {
+            paragraphs.add(text.substring(currentStart))
         }
 
-        // Add any remaining text
+        // 2. Process Paragraphs
+        val currentBuffer = StringBuilder()
+        var currentTarget = MIN_CHUNK_SIZE // Start small for low latency
+
+        for (paragraph in paragraphs) {
+            val cleanedPara = paragraph.trim()
+            if (cleanedPara.isEmpty()) continue
+
+            if (currentBuffer.length + cleanedPara.length < currentTarget) {
+                // Append to batch
+                if (currentBuffer.isNotEmpty()) currentBuffer.append("\n\n")
+                currentBuffer.append(cleanedPara)
+            } else {
+                // If the paragraph ITSELF is huge (larger than target), we must split it by sentence
+                if (cleanedPara.length > TARGET_CHUNK_SIZE) {
+                    // Flush existing buffer first
+                    if (currentBuffer.isNotEmpty()) {
+                        chunks.add(currentBuffer.toString())
+                        currentBuffer.clear()
+                        currentTarget = TARGET_CHUNK_SIZE
+                    }
+
+                    // Split this huge paragraph
+                    val sentenceChunks = splitParagraphBySentences(cleanedPara, TARGET_CHUNK_SIZE)
+                    chunks.addAll(sentenceChunks)
+                } else {
+                    // Flush buffer and start new one with this paragraph
+                    if (currentBuffer.isNotEmpty()) {
+                        chunks.add(currentBuffer.toString())
+                        currentBuffer.clear()
+                        currentTarget = TARGET_CHUNK_SIZE
+                    }
+                    currentBuffer.append(cleanedPara)
+                }
+            }
+        }
+
         if (currentBuffer.isNotEmpty()) {
             chunks.add(currentBuffer.toString())
         }
 
+        return chunks
+    }
+
+    private fun splitParagraphBySentences(paragraph: String, targetSize: Int): List<String> {
+        val chunks = mutableListOf<String>()
+        val iterator = BreakIterator.getSentenceInstance(Locale.US)
+        iterator.setText(paragraph)
+
+        val sb = StringBuilder()
+        var start = iterator.first()
+        var end = iterator.next()
+
+        while (end != BreakIterator.DONE) {
+            val sentence = paragraph.substring(start, end)
+            sb.append(sentence)
+
+            if (sb.length >= targetSize) {
+                chunks.add(sb.toString())
+                sb.clear()
+            }
+            start = end
+            end = iterator.next()
+        }
+        if (sb.isNotEmpty()) {
+            chunks.add(sb.toString())
+        }
         return chunks
     }
 
@@ -65,8 +118,6 @@ object TextChunker {
         val sb = StringBuilder(text)
         for (i in sb.indices) {
             val c = sb[i]
-            // Replace common Markdown markers with space: #, *, _, `, >, [, ]
-            // We keep ( and ) for now as they are often used in normal text too.
             if (c == '#' || c == '*' || c == '_' || c == '`' || c == '>' || c == '[' || c == ']') {
                 sb.setCharAt(i, ' ')
             }
