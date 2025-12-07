@@ -7,23 +7,20 @@ import java.util.regex.Pattern
 object TextChunker {
 
     private const val TARGET_CHUNK_SIZE = 600
-    private const val MIN_CHUNK_SIZE = 100 // For the very first chunk (fast start)
+    private const val MIN_CHUNK_SIZE = 100
 
     /**
-     * Optimized splitting strategy for large articles (e.g., Wikipedia).
-     *
-     * 1. **Paragraph Split**: First, split by double newlines (`\n\n`). This is fast and prevents
-     *    running the heavy BreakIterator on the entire massive string at once.
-     * 2. **Refinement**: If a paragraph is small, use it. If it's huge, split it further by sentences.
-     * 3. **Batching**: Group small paragraphs together to reduce network requests.
+     * Optimized splitting strategy for large articles.
+     * CRITICAL: This implementation is LOSSLESS. It preserves all whitespace and newlines
+     * to ensure that the offset calculations for highlighting match the original text exactly.
      */
     fun chunkText(text: String): List<String> {
-        if (text.isBlank()) return emptyList()
+        if (text.isEmpty()) return emptyList()
 
         val chunks = mutableListOf<String>()
 
-        // 1. Split by Paragraphs first (Fast)
-        // We use a Regex to find paragraph boundaries
+        // 1. Split by Paragraphs (Lossless)
+        // We find delimiters but ensure we capture them in the list so no characters are lost.
         val paragraphPattern = Pattern.compile("\\n\\s*\\n")
         val matcher = paragraphPattern.matcher(text)
 
@@ -31,48 +28,50 @@ object TextChunker {
         val paragraphs = mutableListOf<String>()
 
         while (matcher.find()) {
-            paragraphs.add(text.substring(currentStart, matcher.start()))
-            // We include the newlines in the next chunk or handle them implicitly?
-            // To keep context flow, we treat the delimiter as a separator.
+            // Content before delimiter
+            if (matcher.start() > currentStart) {
+                paragraphs.add(text.substring(currentStart, matcher.start()))
+            }
+            // The delimiter itself (e.g., "\n\n") - Preserving this is key to fixing drift
+            paragraphs.add(text.substring(matcher.start(), matcher.end()))
             currentStart = matcher.end()
         }
+        // Remaining text
         if (currentStart < text.length) {
             paragraphs.add(text.substring(currentStart))
         }
 
         // 2. Process Paragraphs
         val currentBuffer = StringBuilder()
-        var currentTarget = MIN_CHUNK_SIZE // Start small for low latency
+        var currentTarget = MIN_CHUNK_SIZE
 
         for (paragraph in paragraphs) {
-            val cleanedPara = paragraph.trim()
-            if (cleanedPara.isEmpty()) continue
+            // FIX: Removed .trim(). We must append exactly what is there.
 
-            if (currentBuffer.length + cleanedPara.length < currentTarget) {
-                // Append to batch
-                if (currentBuffer.isNotEmpty()) currentBuffer.append("\n\n")
-                currentBuffer.append(cleanedPara)
+            // If adding this paragraph keeps us under target, or if it's just a delimiter
+            if (currentBuffer.length + paragraph.length < currentTarget || paragraph.isBlank()) {
+                currentBuffer.append(paragraph)
             } else {
-                // If the paragraph ITSELF is huge (larger than target), we must split it by sentence
-                if (cleanedPara.length > TARGET_CHUNK_SIZE) {
-                    // Flush existing buffer first
+                // Paragraph is substantive content
+                if (paragraph.length > TARGET_CHUNK_SIZE) {
+                    // Flush existing buffer
                     if (currentBuffer.isNotEmpty()) {
                         chunks.add(currentBuffer.toString())
                         currentBuffer.clear()
                         currentTarget = TARGET_CHUNK_SIZE
                     }
 
-                    // Split this huge paragraph
-                    val sentenceChunks = splitParagraphBySentences(cleanedPara, TARGET_CHUNK_SIZE)
+                    // Split huge paragraph (losslessly)
+                    val sentenceChunks = splitParagraphBySentences(paragraph, TARGET_CHUNK_SIZE)
                     chunks.addAll(sentenceChunks)
                 } else {
-                    // Flush buffer and start new one with this paragraph
+                    // Flush buffer
                     if (currentBuffer.isNotEmpty()) {
                         chunks.add(currentBuffer.toString())
                         currentBuffer.clear()
                         currentTarget = TARGET_CHUNK_SIZE
                     }
-                    currentBuffer.append(cleanedPara)
+                    currentBuffer.append(paragraph)
                 }
             }
         }
@@ -110,10 +109,6 @@ object TextChunker {
         return chunks
     }
 
-    /**
-     * Replaces Markdown syntax characters with spaces to prevent TTS from reading them,
-     * while preserving the exact string length for accurate highlighting mapping.
-     */
     fun sanitizeMarkdownForTts(text: String): String {
         val sb = StringBuilder(text)
         for (i in sb.indices) {

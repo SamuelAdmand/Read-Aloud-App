@@ -120,8 +120,9 @@ private fun MarkdownBlockRenderer(
                         val builder = AnnotatedString.Builder(baseText)
                         builder.addStyle(
                             style = SpanStyle(
-                                background = Color(0xFFFFF176), // Classic Yellow Highlight
-                                color = Color.Black
+                                color = Color(0xFF2196F3),
+                                fontWeight = FontWeight.Bold,
+                                background = Color.Transparent
                             ),
                             start = mappedStart,
                             end = mappedEnd
