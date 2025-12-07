@@ -13,15 +13,17 @@ object ContentRepository {
 
     private val _text = MutableStateFlow("")
     val text = _text.asStateFlow()
+    private var _currentUrl: String? = null
 
-    fun updateContent(newText: String, newTitle: String = "") {
+    fun updateContent(newText: String, newTitle: String = "", sourceUrl: String? = null) {
         _text.value = newText
-        // If no title provided, generate a snippet from the text
         _title.value = newTitle.ifBlank {
             newText.take(50).replace("\n", " ").trim() + "..."
         }
+        _currentUrl = sourceUrl
     }
 
     fun getCurrentText(): String = _text.value
     fun getCurrentTitle(): String = _title.value
+    fun getCurrentUrl(): String? = _currentUrl
 }

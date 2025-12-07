@@ -3,6 +3,7 @@ plugins {
     alias(libs.plugins.kotlin.android)
     alias(libs.plugins.kotlin.compose)
     alias(libs.plugins.chaquopy)
+    alias(libs.plugins.ksp)
 }
 
 android {
@@ -43,6 +44,17 @@ android {
     buildFeatures {
         compose = true
     }
+
+    sourceSets {
+        getByName("debug") {
+            java.srcDir("build/generated/ksp/debug/java")
+            java.srcDir("build/generated/ksp/debug/kotlin")
+        }
+        getByName("release") {
+            java.srcDir("build/generated/ksp/release/java")
+            java.srcDir("build/generated/ksp/release/kotlin")
+        }
+    }
 }
 
 dependencies {
@@ -73,9 +85,19 @@ dependencies {
     // Extended Icons (for Home, Settings, etc.)
     implementation(libs.material.icons.extended.android)
     // Media (for MediaSession and Notification MediaStyle)
-    implementation("androidx.media:media:1.7.0")
+    implementation("androidx.media:media:1.7.1")
     // Markdown Renderer
-    implementation("com.mikepenz:multiplatform-markdown-renderer-android:0.37.0")
+    implementation("com.mikepenz:multiplatform-markdown-renderer-android:0.38.1")
+    // Room Database (Updated for Kotlin 2.x compatibility)
+    implementation("androidx.room:room-runtime:2.8.4")
+    implementation("androidx.room:room-ktx:2.8.4")
+    ksp("androidx.room:room-compiler:2.8.4")
+
+    // WorkManager for background downloading
+    implementation("androidx.work:work-runtime-ktx:2.11.0")
+
+    // Gson for JSON serialization (if needed for complex data)
+    implementation("com.google.code.gson:gson:2.13.2")
 }
 
 chaquopy {

@@ -6,6 +6,7 @@ import android.media.MediaPlayer
 import android.util.Log
 import androidx.core.content.ContextCompat
 import com.samuel.readaloud.repository.ContentRepository
+import com.samuel.readaloud.repository.LibraryRepository
 import com.samuel.readaloud.repository.TtsRepository
 import com.samuel.readaloud.service.TtsMediaService
 import kotlinx.coroutines.CoroutineScope
@@ -20,6 +21,10 @@ import java.io.File
 import java.util.Collections
 import java.util.concurrent.ConcurrentHashMap
 import java.util.regex.Pattern
+import androidx.work.OneTimeWorkRequestBuilder
+import androidx.work.WorkManager
+import androidx.work.workDataOf
+import com.samuel.readaloud.worker.DownloadWorker
 
 data class HighlightRange(val start: Int, val end: Int)
 
@@ -39,6 +44,8 @@ class TtsManager private constructor(
     private val context: Context,
     private val repository: TtsRepository
 ) {
+    private val libraryRepository = LibraryRepository(context)
+    private var currentArticleId: Long = -1L
     companion object {
         @Volatile
         private var instance: TtsManager? = null
@@ -71,7 +78,8 @@ class TtsManager private constructor(
     // UI State
     private val _isPlaying = MutableStateFlow(false)
     val isPlaying = _isPlaying.asStateFlow()
-
+    private val _isSaved = MutableStateFlow(false)
+    val isSaved = _isSaved.asStateFlow()
     private val _isLoading = MutableStateFlow(false)
     val isLoading = _isLoading.asStateFlow()
 
@@ -90,7 +98,7 @@ class TtsManager private constructor(
         }
     }
 
-    fun playText(text: String, voice: String, title: String = "") {
+    fun playText(text: String, voice: String, title: String = "", sourceUrl: String? = null) {
         // 1. Graceful Transition: Hard reset (clear content) before starting new
         resetPlaybackState(clearContent = true)
 
@@ -102,6 +110,8 @@ class TtsManager private constructor(
         ContextCompat.startForegroundService(context, Intent(context, TtsMediaService::class.java))
 
         voiceShortName = voice
+
+        // Chunk text first
         chunks = TextChunker.chunkText(text)
 
         chunkOffsets.clear()
@@ -114,8 +124,18 @@ class TtsManager private constructor(
         currentChunkIndex = 0
         Log.d("TtsManager", "Text split into ${chunks.size} chunks.")
 
-        if (chunks.isNotEmpty()) {
-            processQueue()
+        // Save to History/Database
+        scope.launch {
+            val finalTitle = title.ifBlank { ContentRepository.getCurrentTitle() }
+            currentArticleId = libraryRepository.upsertHistory(finalTitle, text, sourceUrl, chunks)
+
+            // Check saved status
+            val article = libraryRepository.getArticleById(currentArticleId)
+            _isSaved.value = article?.isSavedToLibrary == true
+
+            if (chunks.isNotEmpty()) {
+                processQueue()
+            }
         }
     }
 
@@ -213,10 +233,31 @@ class TtsManager private constructor(
         val text = chunks[index]
         val ttsText = TextChunker.sanitizeMarkdownForTts(text)
 
-        val fileName = "chunk_${text.hashCode()}.mp3" // Use hash to avoid overwriting if text changes
-        val outputFile = File(context.cacheDir, fileName)
+        // Persistent File Naming: article_{id}_chunk_{index}.mp3
+        // If articleId is not yet set (race condition), fallback to hash (temp cache)
+        val audioDir = File(context.filesDir, "audio_cache").apply { mkdirs() }
+        val baseName = if (currentArticleId != -1L) {
+            "article_${currentArticleId}_chunk_$index"
+        } else {
+            "temp_chunk_${text.hashCode()}"
+        }
 
-        val result = repository.generateAudio(ttsText, voiceShortName, outputFile)
+        val outputFile = File(audioDir, "$baseName.mp3")
+
+        // If file exists, we skip generation (Offline Support)
+        val result = if (outputFile.exists() && outputFile.length() > 0) {
+            // Check for sidecar SRT
+            val srtFile = File(audioDir, "$baseName.mp3.srt")
+            if (srtFile.exists()) {
+                Result.success(Pair(outputFile, srtFile))
+            } else {
+                // Audio exists but SRT missing? Regenerate to be safe or just generate SRT?
+                // For simplicity, regenerate both if one is missing to ensure sync.
+                repository.generateAudio(ttsText, voiceShortName, outputFile)
+            }
+        } else {
+            repository.generateAudio(ttsText, voiceShortName, outputFile)
+        }
 
         fetchingIndices.remove(index)
 
@@ -233,6 +274,7 @@ class TtsManager private constructor(
             null
         }
     }
+
 
     private fun parseSrt(srtFile: File, chunkText: String, chunkGlobalOffset: Int): List<Subtitle> {
         val subtitles = mutableListOf<Subtitle>()
@@ -332,6 +374,12 @@ class TtsManager private constructor(
                 }
 
                 setOnCompletionListener {
+                    // Save progress
+                    if (currentArticleId != -1L) {
+                        scope.launch(Dispatchers.IO) {
+                            libraryRepository.updatePlaybackPosition(currentArticleId, currentChunkIndex)
+                        }
+                    }
                     currentChunkIndex++
                     processQueue()
                 }
@@ -402,6 +450,27 @@ class TtsManager private constructor(
         resetPlaybackState(clearContent)
         if (clearContent) {
             context.stopService(Intent(context, TtsMediaService::class.java))
+        }
+    }
+
+    fun toggleLibrary() {
+        if (currentArticleId == -1L) return
+
+        scope.launch {
+            val newState = !_isSaved.value
+            libraryRepository.setSavedToLibrary(currentArticleId, newState)
+            _isSaved.value = newState
+
+            if (newState) {
+                // Trigger background download
+                val workRequest = OneTimeWorkRequestBuilder<DownloadWorker>()
+                    .setInputData(workDataOf(
+                        "articleId" to currentArticleId,
+                        "voiceName" to voiceShortName
+                    ))
+                    .build()
+                WorkManager.getInstance(context).enqueue(workRequest)
+            }
         }
     }
 }

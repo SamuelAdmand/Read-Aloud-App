@@ -60,6 +60,8 @@ import com.samuel.readaloud.ui.components.PlayerControls
 import com.samuel.readaloud.ui.components.VoiceSelectionSheetContent
 import kotlinx.coroutines.launch
 import java.util.Locale
+import androidx.compose.material.icons.filled.Bookmark
+import androidx.compose.material.icons.outlined.BookmarkBorder
 
 private enum class PlayerSheetType { NONE, SPEED, VOICE }
 
@@ -77,7 +79,7 @@ fun PlayerScreen(
     val isLoading by ttsManager.isLoading.collectAsState()
     val currentTitle by ttsManager.currentTitle.collectAsState()
     val currentHighlight by ttsManager.currentHighlight.collectAsState()
-
+    val isSaved by ttsManager.isSaved.collectAsState()
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     var activeSheet by remember { mutableStateOf(PlayerSheetType.NONE) }
     val scope = rememberCoroutineScope()
@@ -107,6 +109,12 @@ fun PlayerScreen(
                     }
                 },
                 actions = {
+                    IconButton(onClick = { ttsManager.toggleLibrary() }) {
+                        Icon(
+                            imageVector = if (isSaved) Icons.Filled.Bookmark else Icons.Outlined.BookmarkBorder,
+                            contentDescription = if (isSaved) "Remove from Library" else "Save to Library"
+                        )
+                    }
                     IconButton(onClick = onEditClick) {
                         Icon(Icons.Filled.Edit, contentDescription = "Edit Text")
                     }
@@ -180,7 +188,8 @@ fun PlayerScreen(
                             ttsManager.playText(
                                 text = sourceText,
                                 voice = voice.shortName,
-                                title = ContentRepository.getCurrentTitle()
+                                title = ContentRepository.getCurrentTitle(),
+                                sourceUrl = ContentRepository.getCurrentUrl()
                             )
                             scope.launch { sheetState.hide() }.invokeOnCompletion { activeSheet = PlayerSheetType.NONE }
                         },

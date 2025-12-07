@@ -68,9 +68,11 @@ import com.samuel.readaloud.repository.UrlRepository
 import com.samuel.readaloud.ui.components.MiniPlayer
 import com.samuel.readaloud.ui.components.UrlInputDialog
 import android.util.Patterns
+import androidx.compose.material.icons.filled.History
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.navigation.NavType
 import androidx.navigation.navArgument
+import com.samuel.readaloud.ui.history.HistoryScreen
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -104,7 +106,8 @@ fun MainScreen(intentSharedUrl: String? = null) {
                     ttsManager.playText(
                         text = article.text,
                         voice = preferenceManager.voiceId,
-                        title = article.title
+                        title = article.title,
+                        sourceUrl = url // Pass the URL here
                     )
                     navController.navigate("player")
                 },
@@ -211,7 +214,8 @@ fun MainScreen(intentSharedUrl: String? = null) {
                                 ttsManager.playText(
                                     text = clipText,
                                     voice = preferenceManager.voiceId,
-                                    title = "Clipboard Content"
+                                    title = "Clipboard Content",
+                                    sourceUrl = null // No URL for clipboard text
                                 )
                                 navController.navigate("player")
                             }
@@ -222,6 +226,9 @@ fun MainScreen(intentSharedUrl: String? = null) {
                 )
             }
             composable("library") { LibraryScreen() }
+            composable("history") {
+                HistoryScreen(onBackClick = { navController.popBackStack() })
+            }
             composable("more") { MoreScreen() }
 
             composable(
@@ -281,15 +288,6 @@ fun MainScreen(intentSharedUrl: String? = null) {
 
                     // Menu Options
                     CreateOptionItem(
-                        icon = Icons.Filled.CameraAlt,
-                        label = "Scan Text",
-                        onClick = {
-                            // Placeholder
-                            scope.launch { sheetState.hide() }.invokeOnCompletion { showBottomSheet = false }
-                        }
-                    )
-
-                    CreateOptionItem(
                         icon = Icons.Filled.Edit,
                         label = "Type or paste Text",
                         onClick = {
@@ -317,6 +315,24 @@ fun MainScreen(intentSharedUrl: String? = null) {
                         onClick = {
                             // Placeholder
                             scope.launch { sheetState.hide() }.invokeOnCompletion { showBottomSheet = false }
+                        }
+                    )
+                    Text(
+                        text = "Other",
+                        style = MaterialTheme.typography.titleLarge,
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier.padding(horizontal = 24.dp, vertical = 16.dp)
+                    )
+
+                    // History
+                    CreateOptionItem(
+                        icon = Icons.Filled.History,
+                        label = "History",
+                        onClick = {
+                            scope.launch { sheetState.hide() }.invokeOnCompletion {
+                                showBottomSheet = false
+                                navController.navigate("history")
+                            }
                         }
                     )
 
