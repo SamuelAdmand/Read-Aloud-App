@@ -38,6 +38,7 @@ import com.samuel.readaloud.domain.TtsManager
 import androidx.compose.animation.core.Animatable
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.layout.offset
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.input.pointer.pointerInput
@@ -58,6 +59,14 @@ fun MiniPlayer(
 // Animation state for swipe
     val offsetY = remember { Animatable(0f) }
     val scope = rememberCoroutineScope()
+
+    // ROBUSTNESS FIX: Ensure player becomes visible when playback starts
+    // This prevents the player from staying "swiped away" when a new track starts
+    LaunchedEffect(isPlaying, title) {
+        if (isPlaying) {
+            offsetY.animateTo(0f)
+        }
+    }
     // Only show if there is a title (implies active session)
     if (title.isBlank()) return
 
