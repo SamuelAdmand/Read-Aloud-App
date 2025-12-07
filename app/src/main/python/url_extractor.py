@@ -1,39 +1,23 @@
 import json
 import trafilatura
-from trafilatura.settings import use_config
-from urllib.parse import urlparse
 
-def extract_from_url(url):
+def extract_from_html(html_content, url):
     """
-    Router function that decides which extractor to use based on the URL.
+    Extracts article content from provided HTML string using Trafilatura.
     """
     try:
-        domain = urlparse(url).netloc.lower()
-        return _extract_generic(url)
-    except Exception as e:
-        return json.dumps({"error": str(e)})
+        if not html_content:
+            return json.dumps({"error": "Empty HTML content provided."})
 
-def _extract_generic(url):
-    """
-    Uses Trafilatura to download and extract text as Markdown.
-    """
-    try:
-        config = use_config()
-        config.set("DEFAULT", "USER_AGENT", "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:109.0) Gecko/20100101 Firefox/115.0")
-
-        downloaded = trafilatura.fetch_url(url)
-
-        if downloaded is None:
-            return json.dumps({"error": "Failed to download page. Check your internet or the URL."})
-
-        # 1. Extract Metadata (Title, etc.)
-        metadata = trafilatura.extract_metadata(downloaded)
+        # 1. Extract Metadata (Title, etc.) from the HTML string
+        metadata = trafilatura.extract_metadata(html_content)
         title = metadata.title if metadata and metadata.title else "No Title"
 
         # 2. Extract Content as Markdown
-        # We enable formatting and tables to get the structure the user wants.
+        # We pass the 'url' parameter so Trafilatura can resolve relative links (e.g., /image.jpg -> domain.com/image.jpg)
         content = trafilatura.extract(
-            downloaded,
+            html_content,
+            url=url,
             include_comments=False,
             include_tables=True,
             include_images=False,

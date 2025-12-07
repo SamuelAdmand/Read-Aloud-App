@@ -84,7 +84,7 @@ fun MainScreen(intentSharedUrl: String? = null) {
     val sheetState = rememberModalBottomSheetState()
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
-    val urlRepository = remember { UrlRepository() }
+    val urlRepository = remember { UrlRepository(context) }
     val ttsManager = remember { TtsManager.getInstance(context) }
 
     var showUrlDialog by remember { mutableStateOf(false) }

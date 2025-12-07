@@ -41,6 +41,7 @@ android {
         // --- APP NAME LOGIC ---
         val finalAppName = if (suffix.isNotEmpty()) {
             // 1. Remove dot. 2. Capitalize (e.g., ".beta" -> "Beta")
+            //noinspection WrongGradleMethod
             val cleanSuffix = suffix.replace(".", "").replaceFirstChar { it.uppercase() }
             "RA $cleanSuffix"
         } else {
@@ -127,7 +128,8 @@ dependencies {
 
     // WorkManager
     implementation("androidx.work:work-runtime-ktx:2.11.0")
-
+    // OkHttp for network requests
+    implementation("com.squareup.okhttp3:okhttp:5.3.2")
     // Gson
     implementation("com.google.code.gson:gson:2.13.2")
 }
@@ -136,7 +138,7 @@ chaquopy {
     defaultConfig {
         version = "3.10"
         pip {
-            install("edge-tts>=7.2.3")
+            install("edge-tts==7.2.1")
             install("requests")
             install("trafilatura")
         }

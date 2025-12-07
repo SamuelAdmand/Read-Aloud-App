@@ -63,7 +63,7 @@ class ShareActivity : ComponentActivity() {
                 var action by remember { mutableStateOf(ShareAction.NONE) }
                 var showDialog by remember { mutableStateOf(true) }
 
-                val urlRepository = remember { UrlRepository() }
+                val urlRepository = remember { UrlRepository(applicationContext) }
                 val libraryRepository = remember { LibraryRepository(applicationContext) }
                 val ttsManager = remember { TtsManager.getInstance(applicationContext) }
                 val preferenceManager = remember { PreferenceManager(applicationContext) }
