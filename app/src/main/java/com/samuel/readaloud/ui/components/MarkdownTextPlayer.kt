@@ -28,6 +28,11 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.samuel.readaloud.domain.HighlightRange
 import java.util.regex.Pattern
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.text.TextLayoutResult
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 
 data class MarkdownBlock(
     val id: String,
@@ -39,6 +44,7 @@ data class MarkdownBlock(
 fun MarkdownTextPlayer(
     rawText: String,
     currentHighlight: HighlightRange?,
+    onTextClick: (Int) -> Unit,
     modifier: Modifier = Modifier
 ) {
     // 1. Split massive text into manageable blocks (Paragraphs)
@@ -75,7 +81,8 @@ fun MarkdownTextPlayer(
         items(blocks, key = { it.id }) { block ->
             MarkdownBlockRenderer(
                 block = block,
-                currentHighlight = currentHighlight
+                currentHighlight = currentHighlight,
+                onTextClick = onTextClick
             )
         }
     }
@@ -84,13 +91,14 @@ fun MarkdownTextPlayer(
 @Composable
 private fun MarkdownBlockRenderer(
     block: MarkdownBlock,
-    currentHighlight: HighlightRange?
+    currentHighlight: HighlightRange?,
+    onTextClick: (Int) -> Unit
 ) {
     // Parse Markdown for this specific block only
     val renderResult = remember(block.text) {
         MarkdownParser.parse(block.text)
     }
-
+    var layoutResult by remember { mutableStateOf<TextLayoutResult?>(null) }
     // Calculate highlight relative to this block
     val displayedText by remember(renderResult, currentHighlight) {
         derivedStateOf {
@@ -145,9 +153,19 @@ private fun MarkdownBlockRenderer(
             lineHeight = 28.sp,
             color = MaterialTheme.colorScheme.onSurface
         ),
+        onTextLayout = { layoutResult = it },
         modifier = Modifier
             .fillMaxWidth()
-            .padding(bottom = 12.dp) // Spacing between paragraphs
+            .padding(bottom = 12.dp)
+            .pointerInput(block.text) {
+                detectTapGestures { pos ->
+                    layoutResult?.let { layout ->
+                        val renderedOffset = layout.getOffsetForPosition(pos)
+                        val rawOffset = renderResult.mapRenderedToRaw(renderedOffset)
+                        onTextClick(block.globalStartIndex + rawOffset)
+                    }
+                }
+            }
     )
 }
 
@@ -187,6 +205,12 @@ data class RenderResult(
         if (rawIndex < 0) return 0
         if (rawIndex >= offsetMap.size) return offsetMap.lastOrNull() ?: offsetMap.size - 1
         return offsetMap[rawIndex]
+    }
+    fun mapRenderedToRaw(renderedIndex: Int): Int {
+        for (i in offsetMap.indices) {
+            if (offsetMap[i] == renderedIndex) return i
+        }
+        return 0
     }
 }
 

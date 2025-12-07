@@ -90,14 +90,92 @@ class TtsManager private constructor(
     val currentHighlight = _currentHighlight.asStateFlow()
 
     private var currentSpeed: Float = 1.0f
-
+    private var pendingSeekGlobalIndex: Int? = null
     fun setPlaybackSpeed(speed: Float) {
         currentSpeed = speed
         if (mediaPlayer?.isPlaying == true) {
             mediaPlayer?.playbackParams = mediaPlayer?.playbackParams?.setSpeed(speed) ?: android.media.PlaybackParams().setSpeed(speed)
         }
     }
+    fun seekToLocation(globalIndex: Int) {
+        if (chunks.isEmpty()) return
 
+        // 1. Find which chunk contains this index
+        val targetChunkIndex = chunkOffsets.indexOfLast { it <= globalIndex }
+        if (targetChunkIndex == -1) return
+
+        // 2. If it's the current chunk and playing, just seek
+        if (targetChunkIndex == currentChunkIndex && mediaPlayer != null) {
+            val chunk = cachedChunks[currentChunkIndex] ?: return
+            val subtitle = chunk.subtitles.find {
+                globalIndex >= it.globalRange.start && globalIndex < it.globalRange.end
+            } ?: chunk.subtitles.minByOrNull { kotlin.math.abs(it.globalRange.start - globalIndex) }
+
+            subtitle?.let {
+                mediaPlayer?.seekTo(it.startMillis.toInt())
+            }
+            return
+        }
+
+        // 3. If it's a different chunk, switch and set pending seek
+        stopMonitoring()
+        if (mediaPlayer?.isPlaying == true) {
+            mediaPlayer?.stop()
+        }
+
+        currentChunkIndex = targetChunkIndex
+        pendingSeekGlobalIndex = globalIndex
+        processQueue()
+    }
+    fun skipNext() {
+        val player = mediaPlayer ?: return
+        val currentChunk = cachedChunks[currentChunkIndex] ?: return
+        val currentPos = player.currentPosition.toLong()
+
+        // Find current subtitle index
+        val currentIndex = currentChunk.subtitles.indexOfFirst {
+            currentPos >= it.startMillis && currentPos < it.endMillis
+        }
+
+        if (currentIndex != -1 && currentIndex < currentChunk.subtitles.size - 1) {
+            // Seek to next subtitle in current chunk
+            val nextSubtitle = currentChunk.subtitles[currentIndex + 1]
+            player.seekTo(nextSubtitle.startMillis.toInt())
+        } else {
+            // Move to next chunk
+            if (currentChunkIndex < chunks.size - 1) {
+                currentChunkIndex++
+                processQueue()
+            }
+        }
+    }
+
+    fun skipPrevious() {
+        val player = mediaPlayer ?: return
+        val currentChunk = cachedChunks[currentChunkIndex] ?: return
+        val currentPos = player.currentPosition.toLong()
+
+        // Find current subtitle index
+        val currentIndex = currentChunk.subtitles.indexOfFirst {
+            currentPos >= it.startMillis && currentPos < it.endMillis
+        }
+
+        // If we are deep into a subtitle (>2s), restart it. Otherwise go to prev.
+        // For strict "Previous" button behavior (SRT based):
+        if (currentIndex > 0) {
+            val prevSubtitle = currentChunk.subtitles[currentIndex - 1]
+            player.seekTo(prevSubtitle.startMillis.toInt())
+        } else {
+            // Move to previous chunk
+            if (currentChunkIndex > 0) {
+                currentChunkIndex--
+                processQueue()
+            } else {
+                // Restart beginning
+                player.seekTo(0)
+            }
+        }
+    }
     fun playText(text: String, voice: String, title: String = "", sourceUrl: String? = null) {
         // 1. Graceful Transition: Hard reset (clear content) before starting new
         resetPlaybackState(clearContent = true)
@@ -162,6 +240,7 @@ class TtsManager private constructor(
         _isPlaying.value = false
         _isLoading.value = false
         _currentHighlight.value = null
+        pendingSeekGlobalIndex = null
 
         // Cancel background fetches
         fetchingIndices.clear()
@@ -201,7 +280,19 @@ class TtsManager private constructor(
 
             if (chunkData != null) {
                 bufferNextChunks()
-                playFile(chunkData)
+
+                // Determine start time if there is a pending seek
+                var startMillis = 0L
+                pendingSeekGlobalIndex?.let { targetIndex ->
+                    val subtitle = chunkData.subtitles.find {
+                        targetIndex >= it.globalRange.start && targetIndex < it.globalRange.end
+                    } ?: chunkData.subtitles.firstOrNull() // Fallback to start
+
+                    subtitle?.let { startMillis = it.startMillis }
+                    pendingSeekGlobalIndex = null // Clear it
+                }
+
+                playFile(chunkData, startMillis)
             } else {
                 Log.e("TtsManager", "No playable chunks found.")
                 stop()
@@ -356,8 +447,7 @@ class TtsManager private constructor(
         } catch (e: Exception) { }
         return 0L
     }
-
-    private fun playFile(chunkData: CachedChunk) {
+    private fun playFile(chunkData: CachedChunk, startMillis: Long = 0L) {
         stopMonitoring()
         mediaPlayer?.release()
         mediaPlayer = null
@@ -373,6 +463,10 @@ class TtsManager private constructor(
                     playbackParams = params
                 } catch (e: Exception) {
                     Log.w("TtsManager", "Failed to set speed", e)
+                }
+
+                if (startMillis > 0) {
+                    seekTo(startMillis.toInt())
                 }
 
                 setOnCompletionListener {
@@ -396,6 +490,7 @@ class TtsManager private constructor(
             processQueue()
         }
     }
+
 
     private fun startMonitoring(subtitles: List<Subtitle>) {
         monitorJob = scope.launch {

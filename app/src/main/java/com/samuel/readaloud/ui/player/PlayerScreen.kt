@@ -110,8 +110,8 @@ fun PlayerScreen(
                 isLoading = isLoading,
                 playbackSpeed = playbackSpeed,
                 onPlayPause = { ttsManager.togglePlayPause() },
-                onNextSection = { /* TODO */ },
-                onPrevSection = { /* TODO */ },
+                onNextSection = { ttsManager.skipNext() },
+                onPrevSection = { ttsManager.skipPrevious() },
                 onSpeedClick = { activeSheet = PlayerSheetType.SPEED },
                 onVoiceClick = { activeSheet = PlayerSheetType.VOICE },
                 modifier = Modifier.padding(12.dp)
@@ -128,6 +128,7 @@ fun PlayerScreen(
             MarkdownTextPlayer(
                 rawText = sourceText,
                 currentHighlight = currentHighlight,
+                onTextClick = { index -> ttsManager.seekToLocation(index) },
                 modifier = Modifier
                     .weight(1f)
             )
