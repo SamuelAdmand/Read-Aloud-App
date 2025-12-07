@@ -24,12 +24,18 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
+import androidx.work.OneTimeWorkRequestBuilder
+import androidx.work.WorkManager
+import androidx.work.workDataOf
 import com.chaquo.python.Python
 import com.chaquo.python.android.AndroidPlatform
 import com.samuel.readaloud.data.local.PreferenceManager
+import com.samuel.readaloud.domain.TextChunker
 import com.samuel.readaloud.domain.TtsManager
+import com.samuel.readaloud.repository.LibraryRepository
 import com.samuel.readaloud.repository.UrlRepository
 import com.samuel.readaloud.ui.theme.ReadAloudTheme
+import com.samuel.readaloud.worker.DownloadWorker
 import java.util.regex.Pattern
 
 class ShareActivity : ComponentActivity() {
@@ -53,11 +59,12 @@ class ShareActivity : ComponentActivity() {
 
         setContent {
             ReadAloudTheme {
-                // State to control dialog visibility
+                // State to control flow
+                var action by remember { mutableStateOf(ShareAction.NONE) }
                 var showDialog by remember { mutableStateOf(true) }
-                var isExtracting by remember { mutableStateOf(false) }
 
                 val urlRepository = remember { UrlRepository() }
+                val libraryRepository = remember { LibraryRepository(applicationContext) }
                 val ttsManager = remember { TtsManager.getInstance(applicationContext) }
                 val preferenceManager = remember { PreferenceManager(applicationContext) }
 
@@ -72,8 +79,8 @@ class ShareActivity : ComponentActivity() {
                         confirmButton = {
                             Button(
                                 onClick = {
-                                    isExtracting = true
                                     showDialog = false
+                                    action = ShareAction.PLAY
                                 }
                             ) {
                                 Text("Play")
@@ -82,9 +89,8 @@ class ShareActivity : ComponentActivity() {
                         dismissButton = {
                             TextButton(
                                 onClick = {
-                                    Toast.makeText(this@ShareActivity, "Saved to Library (Coming Soon)", Toast.LENGTH_SHORT).show()
                                     showDialog = false
-                                    finish()
+                                    action = ShareAction.SAVE
                                 }
                             ) {
                                 Text("Save to Library")
@@ -93,7 +99,7 @@ class ShareActivity : ComponentActivity() {
                     )
                 }
 
-                if (isExtracting) {
+                if (action != ShareAction.NONE) {
                     // Show a simple loading spinner
                     Dialog(onDismissRequest = { }) {
                         Surface(
@@ -109,20 +115,58 @@ class ShareActivity : ComponentActivity() {
                         }
                     }
 
-                    // Perform extraction
-                    LaunchedEffect(Unit) {
+                    // Perform extraction and action
+                    LaunchedEffect(action) {
                         val result = urlRepository.extractArticle(sharedUrl)
                         result.fold(
                             onSuccess = { article ->
-                                ttsManager.playText(
-                                    text = article.text,
-                                    voice = preferenceManager.voiceId,
-                                    title = article.title
-                                )
-                                finish() // Close dialog, audio continues in background
+                                if (action == ShareAction.PLAY) {
+                                    ttsManager.playText(
+                                        text = article.text,
+                                        voice = preferenceManager.voiceId,
+                                        title = article.title,
+                                        sourceUrl = sharedUrl
+                                    )
+                                } else if (action == ShareAction.SAVE) {
+                                    // 1. Chunk the text for offline storage
+                                    val chunks = TextChunker.chunkText(article.text)
+
+                                    // 2. Save to database
+                                    val id = libraryRepository.upsertHistory(
+                                        title = article.title,
+                                        text = article.text,
+                                        sourceUrl = sharedUrl,
+                                        chunks = chunks
+                                    )
+
+                                    // 3. Mark as saved
+                                    libraryRepository.setSavedToLibrary(id, true)
+
+                                    // 4. Trigger Background Download
+                                    val workRequest = OneTimeWorkRequestBuilder<DownloadWorker>()
+                                        .setInputData(
+                                            workDataOf(
+                                                "articleId" to id,
+                                                "voiceName" to preferenceManager.voiceId
+                                            )
+                                        )
+                                        .build()
+                                    WorkManager.getInstance(applicationContext).enqueue(workRequest)
+
+                                    Toast.makeText(
+                                        this@ShareActivity,
+                                        "Saved to Library",
+                                        Toast.LENGTH_SHORT
+                                    ).show()
+                                }
+                                finish()
                             },
                             onFailure = { e ->
-                                Toast.makeText(this@ShareActivity, "Error: ${e.message}", Toast.LENGTH_LONG).show()
+                                Toast.makeText(
+                                    this@ShareActivity,
+                                    "Error: ${e.message}",
+                                    Toast.LENGTH_LONG
+                                ).show()
                                 finish()
                             }
                         )
@@ -131,4 +175,6 @@ class ShareActivity : ComponentActivity() {
             }
         }
     }
+
+    private enum class ShareAction { NONE, PLAY, SAVE }
 }

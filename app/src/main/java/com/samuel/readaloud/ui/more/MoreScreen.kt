@@ -64,11 +64,11 @@ fun MoreScreen(
             )
 
             HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp))
-
+            val speed = viewModel.defaultSpeed
             SettingsItem(
                 icon = Icons.Default.Speed,
                 title = "Default Speed",
-                subtitle = String.format("%.1fx", viewModel.defaultSpeed),
+                subtitle = String.format("%sx", speed.toString().trimEnd('0').trimEnd('.')),
                 onClick = { showSpeedDialog = true }
             )
         }

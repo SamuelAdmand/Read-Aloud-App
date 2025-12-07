@@ -68,6 +68,8 @@ import com.samuel.readaloud.repository.UrlRepository
 import com.samuel.readaloud.ui.components.MiniPlayer
 import com.samuel.readaloud.ui.components.UrlInputDialog
 import android.util.Patterns
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.material.icons.filled.History
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.navigation.NavType
@@ -139,10 +141,15 @@ fun MainScreen(intentSharedUrl: String? = null) {
                             label = { Text("Home") },
                             selected = currentDestination?.hierarchy?.any { it.route == "home" } == true,
                             onClick = {
-                                navController.navigate("home") {
-                                    popUpTo(navController.graph.findStartDestination().id) { saveState = true }
-                                    launchSingleTop = true
-                                    restoreState = true
+                                // Only navigate if we are NOT currently on the home screen
+                                if (currentDestination?.route != "home") {
+                                    navController.navigate("home") {
+                                        popUpTo(navController.graph.findStartDestination().id) {
+                                            inclusive = false
+                                        }
+                                        launchSingleTop = true
+                                        restoreState = true
+                                    }
                                 }
                             },
                             modifier = Modifier.weight(1f)
@@ -166,7 +173,7 @@ fun MainScreen(intentSharedUrl: String? = null) {
                                 }
                             },
                             label = { /* No label for the center button */ },
-                            selected = false, // Never selected
+                            selected = false,
                             onClick = { showBottomSheet = true },
                             modifier = Modifier.weight(1f)
                         )
@@ -177,10 +184,15 @@ fun MainScreen(intentSharedUrl: String? = null) {
                             label = { Text("Library") },
                             selected = currentDestination?.hierarchy?.any { it.route == "library" } == true,
                             onClick = {
-                                navController.navigate("library") {
-                                    popUpTo(navController.graph.findStartDestination().id) { saveState = true }
-                                    launchSingleTop = true
-                                    restoreState = true
+                                // Only navigate if we are NOT currently on the library screen
+                                if (currentDestination?.route != "library") {
+                                    navController.navigate("library") {
+                                        popUpTo(navController.graph.findStartDestination().id) {
+                                            saveState = true
+                                        }
+                                        launchSingleTop = true
+                                        restoreState = true
+                                    }
                                 }
                             },
                             modifier = Modifier.weight(1f)
@@ -197,7 +209,11 @@ fun MainScreen(intentSharedUrl: String? = null) {
         NavHost(
             navController = navController,
             startDestination = "home",
-            modifier = Modifier.padding(bottom = innerPadding.calculateBottomPadding())
+            modifier = Modifier.padding(bottom = innerPadding.calculateBottomPadding()),
+            enterTransition = { slideInHorizontally(initialOffsetX = { it }) },
+            exitTransition = { slideOutHorizontally(targetOffsetX = { -it }) },
+            popEnterTransition = { slideInHorizontally(initialOffsetX = { -it }) },
+            popExitTransition = { slideOutHorizontally(targetOffsetX = { it }) }
         ) {
             composable("home") {
                 HomeScreen(
