@@ -5,6 +5,7 @@ import android.util.Log
 import androidx.work.CoroutineWorker
 import androidx.work.WorkerParameters
 import androidx.work.workDataOf
+import com.samuel.readaloud.data.local.PreferenceManager
 import com.samuel.readaloud.domain.TextChunker
 import com.samuel.readaloud.repository.LibraryRepository
 import com.samuel.readaloud.repository.TtsRepository
@@ -21,7 +22,8 @@ class DownloadWorker(
     override suspend fun doWork(): Result {
         val articleId = inputData.getLong("articleId", -1L)
         val voiceName = inputData.getString("voiceName") ?: "en-US-AriaNeural"
-
+        val preferenceManager = PreferenceManager(context)
+        val provider = preferenceManager.ttsProvider
         if (articleId == -1L) {
             return Result.failure()
         }
@@ -61,8 +63,7 @@ class DownloadWorker(
                 // Update progress
                 setProgress(workDataOf("progress" to (index.toFloat() / chunks.size) * 100))
 
-                val result = ttsRepository.generateAudio(ttsText, voiceName, outputFile)
-
+                val result = ttsRepository.generateAudio(ttsText, voiceName, outputFile, provider)
                 if (result.isSuccess) {
                     successCount++
                 } else {

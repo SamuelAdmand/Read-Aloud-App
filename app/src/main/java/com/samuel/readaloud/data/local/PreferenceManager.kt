@@ -24,7 +24,13 @@ class PreferenceManager(context: Context) {
         private const val DEFAULT_VOICE_ID = "en-US-AriaNeural"
         private const val DEFAULT_VOICE_NAME = "Aria (US)"
         private const val DEFAULT_SPEED = 1.0f
+        private const val KEY_TTS_PROVIDER = "tts_provider"
+        const val PROVIDER_EDGE = "edge"
+        const val PROVIDER_GOOGLE = "google"
     }
+    var ttsProvider: String
+        get() = prefs.getString(KEY_TTS_PROVIDER, PROVIDER_EDGE) ?: PROVIDER_EDGE
+        set(value) = prefs.edit().putString(KEY_TTS_PROVIDER, value).apply()
 
     var voiceId: String
         get() = prefs.getString(KEY_VOICE_ID, DEFAULT_VOICE_ID) ?: DEFAULT_VOICE_ID

@@ -14,19 +14,21 @@ class TtsRepository {
         Python.getInstance().getModule("tts_engine")
     }
 
-    suspend fun getVoices(): List<Voice> = withContext(Dispatchers.IO) {
-        val jsonString = pythonModule.callAttr("get_voices_json").toString()
+    suspend fun getVoices(provider: String): List<Voice> = withContext(Dispatchers.IO) {
+        val jsonString = pythonModule.callAttr("get_voices_json", provider).toString()
         parseVoices(jsonString)
     }
 
     suspend fun generateAudio(
         text: String,
         voiceShortName: String,
-        outputFile: File
+        outputFile: File,
+        provider: String // Added parameter
     ): Result<Pair<File, File>> = withContext(Dispatchers.IO) {
         try {
-            Log.d("TtsRepository", "Generating audio... (Length: ${text.length})")
-            pythonModule.callAttr("tts", text, voiceShortName, outputFile.absolutePath)
+            Log.d("TtsRepository", "Generating audio... (Length: ${text.length}) Provider: $provider")
+            // Pass provider to Python
+            pythonModule.callAttr("tts", text, voiceShortName, outputFile.absolutePath, provider)
 
             val srtFile = File(outputFile.absolutePath + ".srt")
             if (srtFile.exists()) {

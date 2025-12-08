@@ -75,6 +75,7 @@ import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.navigation.NavType
 import androidx.navigation.navArgument
 import com.samuel.readaloud.ui.history.HistoryScreen
+import androidx.compose.runtime.LaunchedEffect
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -95,6 +96,11 @@ fun MainScreen(intentSharedUrl: String? = null) {
     val currentRoute = currentDestination?.route
     val preferenceManager = remember { com.samuel.readaloud.data.local.PreferenceManager(context) }
 
+    LaunchedEffect(ttsManager) {
+        ttsManager.errorEvents.collect { message ->
+            Toast.makeText(context, message, Toast.LENGTH_LONG).show()
+        }
+    }
     val clipboardManager = LocalClipboardManager.current
 
 // Helper to handle URL extraction and playback

@@ -70,7 +70,8 @@ fun PlayerScreen(
 
     LaunchedEffect(Unit) {
         try {
-            allVoices = repository.getVoices()
+            val provider = preferenceManager.ttsProvider
+            allVoices = repository.getVoices(provider)
         } catch (e: Exception) {
             e.printStackTrace()
         }

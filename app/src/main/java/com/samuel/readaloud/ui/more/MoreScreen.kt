@@ -27,6 +27,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.samuel.readaloud.data.local.PreferenceManager
 import com.samuel.readaloud.ui.components.SpeedSelectionSheetContent
 import com.samuel.readaloud.ui.components.VoiceSelectionSheetContent
 import kotlinx.coroutines.launch
@@ -54,6 +55,23 @@ fun MoreScreen(
                 .padding(innerPadding)
                 .fillMaxSize()
         ) {
+            SettingsSectionTitle("Engine")
+
+            SettingsItem(
+                icon = Icons.Default.GraphicEq, // Or another suitable icon
+                title = "TTS Provider",
+                subtitle = if (viewModel.currentProvider == PreferenceManager.PROVIDER_EDGE) "Edge TTS (High Quality)" else "Google TTS (Standard)",
+                onClick = {
+                    val newProvider = if (viewModel.currentProvider == PreferenceManager.PROVIDER_EDGE)
+                        PreferenceManager.PROVIDER_GOOGLE
+                    else
+                        PreferenceManager.PROVIDER_EDGE
+                    viewModel.onProviderChanged(newProvider)
+                }
+            )
+
+            HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp))
+
             SettingsSectionTitle("Default Playback")
 
             SettingsItem(

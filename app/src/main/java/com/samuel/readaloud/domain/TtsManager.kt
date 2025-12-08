@@ -26,6 +26,8 @@ import androidx.work.WorkManager
 import androidx.work.workDataOf
 import com.samuel.readaloud.data.local.PreferenceManager
 import com.samuel.readaloud.worker.DownloadWorker
+import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.asSharedFlow
 
 data class HighlightRange(val start: Int, val end: Int)
 
@@ -48,6 +50,8 @@ class TtsManager private constructor(
 ) {
     private val libraryRepository = LibraryRepository(context)
     private val preferenceManager = PreferenceManager(context)
+    private val _errorEvents = MutableSharedFlow<String>()
+    val errorEvents = _errorEvents.asSharedFlow()
     private var currentArticleId: Long = -1L
     companion object {
         @Volatile
@@ -402,7 +406,7 @@ class TtsManager private constructor(
         } else {
             "temp_chunk_${text.hashCode()}_v${voiceHash}"
         }
-
+        val currentProvider = preferenceManager.ttsProvider
         val outputFile = File(audioDir, "$baseName.mp3")
 
         val result = if (outputFile.exists() && outputFile.length() > 0) {
@@ -410,10 +414,19 @@ class TtsManager private constructor(
             if (srtFile.exists()) {
                 Result.success(Pair(outputFile, srtFile))
             } else {
-                repository.generateAudio(ttsText, targetVoice, outputFile)
+                repository.generateAudio(ttsText, targetVoice, outputFile, currentProvider)
             }
         } else {
-            repository.generateAudio(ttsText, targetVoice, outputFile)
+            repository.generateAudio(ttsText, targetVoice, outputFile, currentProvider)
+        }
+
+        // Error Handling Logic
+        if (result.isFailure) {
+            if (currentProvider == PreferenceManager.PROVIDER_EDGE) {
+                scope.launch {
+                    _errorEvents.emit("Edge TTS failed. Please switch to Google TTS in Settings.")
+                }
+            }
         }
 
         fetchingIndices.remove(index)

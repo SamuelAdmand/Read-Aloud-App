@@ -141,6 +141,7 @@ chaquopy {
             install("edge-tts==7.2.1")
             install("requests")
             install("trafilatura")
+            install("gTTS")
         }
     }
 }

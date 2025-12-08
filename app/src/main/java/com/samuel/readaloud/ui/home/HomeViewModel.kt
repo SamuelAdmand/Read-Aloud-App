@@ -1,19 +1,24 @@
 package com.samuel.readaloud.ui.home
 
+import android.app.Application
 import android.media.MediaPlayer
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
-import androidx.lifecycle.ViewModel
+import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.samuel.readaloud.data.local.PreferenceManager
 import com.samuel.readaloud.model.Voice
 import com.samuel.readaloud.repository.TtsRepository
 import kotlinx.coroutines.launch
 import java.io.File
 
 class HomeViewModel(
-    private val repository: TtsRepository = TtsRepository()
-) : ViewModel() {
+    application: Application
+) : AndroidViewModel(application) {
+
+    private val repository = TtsRepository()
+    private val preferenceManager = PreferenceManager(application)
 
     // State for the text input box
     var textInput by mutableStateOf("")
@@ -43,11 +48,18 @@ class HomeViewModel(
         viewModelScope.launch {
             isLoadingVoices = true
             try {
-                val fetchedVoices = repository.getVoices()
+                val provider = preferenceManager.ttsProvider
+                val fetchedVoices = repository.getVoices(provider)
                 voices = fetchedVoices
-                // Default to Aria (US) if available, otherwise the first one
-                selectedVoice = fetchedVoices.find { it.shortName == "en-US-AriaNeural" }
-                    ?: fetchedVoices.firstOrNull()
+
+                // Default logic
+                if (provider == PreferenceManager.PROVIDER_GOOGLE) {
+                    selectedVoice = fetchedVoices.find { it.shortName == "en" }
+                        ?: fetchedVoices.firstOrNull()
+                } else {
+                    selectedVoice = fetchedVoices.find { it.shortName == "en-US-AriaNeural" }
+                        ?: fetchedVoices.firstOrNull()
+                }
             } catch (e: Exception) {
                 e.printStackTrace()
             }
@@ -71,7 +83,8 @@ class HomeViewModel(
             isGenerating = true
             val outputFile = File(cacheDir, "tts_test.mp3")
 
-            val result = repository.generateAudio(textInput, voice.shortName, outputFile)
+            val provider = preferenceManager.ttsProvider
+            val result = repository.generateAudio(textInput, voice.shortName, outputFile, provider)
 
             result.onSuccess { (audioFile, _) ->
                 playAudio(audioFile)

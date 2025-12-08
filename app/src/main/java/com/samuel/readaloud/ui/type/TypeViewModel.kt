@@ -40,7 +40,8 @@ class TypeViewModel(application: Application) : AndroidViewModel(application) {
     private fun loadVoices() {
         viewModelScope.launch {
             try {
-                voices = repository.getVoices()
+                val provider = preferenceManager.ttsProvider
+                voices = repository.getVoices(provider)
             } catch (e: Exception) {
                 e.printStackTrace()
             }

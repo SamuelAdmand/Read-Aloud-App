@@ -15,7 +15,8 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
 
     private val repository = TtsRepository()
     private val preferenceManager = PreferenceManager(application)
-
+    var currentProvider by mutableStateOf(preferenceManager.ttsProvider)
+        private set
     // --- State ---
     var defaultVoiceName by mutableStateOf(preferenceManager.voiceName)
         private set
@@ -39,9 +40,38 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
     private fun loadVoices() {
         viewModelScope.launch {
             try {
-                voices = repository.getVoices()
+                // Pass current provider
+                voices = repository.getVoices(currentProvider)
             } catch (e: Exception) {
                 e.printStackTrace()
+            }
+        }
+    }
+
+    // Add new function
+    fun onProviderChanged(provider: String) {
+        if (currentProvider == provider) return
+
+        currentProvider = provider
+        preferenceManager.ttsProvider = provider
+
+        viewModelScope.launch {
+            // 1. Load new voices
+            try {
+                voices = repository.getVoices(provider)
+            } catch (e: Exception) {
+                voices = emptyList()
+            }
+
+            // 2. Select a default voice for the new provider to prevent crashes
+            if (provider == PreferenceManager.PROVIDER_GOOGLE) {
+                // Default to English if available, else first
+                val default = voices.find { it.shortName == "en" } ?: voices.firstOrNull()
+                default?.let { onVoiceSelected(it) }
+            } else {
+                // Default to Aria for Edge
+                val default = voices.find { it.shortName == "en-US-AriaNeural" } ?: voices.firstOrNull()
+                default?.let { onVoiceSelected(it) }
             }
         }
     }
