@@ -435,7 +435,20 @@ class TtsManager private constructor(
             val (audio, srt) = result.getOrNull() ?: return null
 
             val globalOffset = chunkOffsets.getOrElse(index) { 0 }
-            val subtitles = parseSrt(srt, text, globalOffset)
+
+            // Parse SRT, but fallback to highlighting the whole chunk if parsing fails (e.g. Google TTS)
+            val parsedSubtitles = parseSrt(srt, text, globalOffset)
+            val subtitles = parsedSubtitles.ifEmpty {
+                // Fallback: Create a single subtitle covering the entire text and duration
+                listOf(
+                    Subtitle(
+                        startMillis = 0L,
+                        endMillis = Long.MAX_VALUE, // Keep active until chunk finishes
+                        text = text,
+                        globalRange = HighlightRange(globalOffset, globalOffset + text.length)
+                    )
+                )
+            }
 
             val cachedChunk = CachedChunk(audio, subtitles, targetVoice)
 

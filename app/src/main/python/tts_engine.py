@@ -54,16 +54,18 @@ async def _get_edge_voices():
 def _google_tts(text, voice, output_file):
     log_d(f"Starting Google TTS for: {text[:20]}... using lang: {voice}")
     # Voice for gTTS is just the language code (e.g., 'en', 'es')
-    # We could extend this to support TLDs for accents later if needed.
     tts = gTTS(text=text, lang=voice)
     tts.save(output_file)
 
-    # Generate dummy SRT because the app expects it for highlighting
-    # This prevents the "SRT file not generated" error in Repository
+    # Generate dummy SRT because the app expects it for highlighting.
+    # We replace newlines with spaces to prevent the SRT parser in Kotlin
+    # from incorrectly splitting the text or failing on blank lines.
+    safe_text = text.replace("\n", " ").replace("\r", "")
+
     srt_file = output_file + ".srt"
     with open(srt_file, "w", encoding="utf-8") as file:
         # Create a single subtitle entry spanning a long duration
-        file.write("1\n00:00:00,000 --> 00:59:59,999\n" + text)
+        file.write("1\n00:00:00,000 --> 00:59:59,999\n" + safe_text)
 
     return output_file
 
