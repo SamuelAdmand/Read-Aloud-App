@@ -27,6 +27,7 @@ class PreferenceManager(context: Context) {
         private const val KEY_TTS_PROVIDER = "tts_provider"
         const val PROVIDER_EDGE = "edge"
         const val PROVIDER_GOOGLE = "google"
+        const val PROVIDER_SYSTEM = "system"
     }
     var ttsProvider: String
         get() = prefs.getString(KEY_TTS_PROVIDER, PROVIDER_EDGE) ?: PROVIDER_EDGE

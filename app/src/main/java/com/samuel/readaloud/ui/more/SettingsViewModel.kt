@@ -13,7 +13,7 @@ import kotlinx.coroutines.launch
 
 class SettingsViewModel(application: Application) : AndroidViewModel(application) {
 
-    private val repository = TtsRepository()
+    private val repository = TtsRepository(application)
     private val preferenceManager = PreferenceManager(application)
     var currentProvider by mutableStateOf(preferenceManager.ttsProvider)
         private set
@@ -63,19 +63,23 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
                 voices = emptyList()
             }
 
-            // 2. Select a default voice for the new provider to prevent crashes
-            if (provider == PreferenceManager.PROVIDER_GOOGLE) {
-                // Default to English if available, else first
-                val default = voices.find { it.shortName == "en" } ?: voices.firstOrNull()
-                default?.let { onVoiceSelected(it) }
-            } else {
-                // Default to Aria for Edge
-                val default = voices.find { it.shortName == "en-US-AriaNeural" } ?: voices.firstOrNull()
-                default?.let { onVoiceSelected(it) }
+            // 2. Select a default voice for the new provider
+            val default = when (provider) {
+                PreferenceManager.PROVIDER_GOOGLE -> {
+                    voices.find { it.shortName == "en" } ?: voices.firstOrNull()
+                }
+                PreferenceManager.PROVIDER_SYSTEM -> {
+                    // Try to find a voice matching the system locale or just pick the first one
+                    val sysLocale = java.util.Locale.getDefault().toLanguageTag()
+                    voices.find { it.locale == sysLocale } ?: voices.firstOrNull()
+                }
+                else -> { // Edge
+                    voices.find { it.shortName == "en-US-AriaNeural" } ?: voices.firstOrNull()
+                }
             }
+            default?.let { onVoiceSelected(it) }
         }
     }
-
     // --- Actions ---
 
     fun onVoiceSelected(voice: Voice) {

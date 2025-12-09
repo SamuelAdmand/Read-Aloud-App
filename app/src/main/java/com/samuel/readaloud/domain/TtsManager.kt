@@ -50,6 +50,8 @@ class TtsManager private constructor(
 ) {
     private val libraryRepository = LibraryRepository(context)
     private val preferenceManager = PreferenceManager(context)
+    private val systemTtsEngine = SystemTtsEngine(context)
+    private var activeProvider = PreferenceManager.PROVIDER_EDGE
     private val _errorEvents = MutableSharedFlow<String>()
     val errorEvents = _errorEvents.asSharedFlow()
     private var currentArticleId: Long = -1L
@@ -62,7 +64,7 @@ class TtsManager private constructor(
             return instance ?: synchronized(this) {
                 instance ?: TtsManager(
                     context.applicationContext,
-                    TtsRepository()
+                    TtsRepository(context.applicationContext)
                 ).also { instance = it }
             }
         }
@@ -103,48 +105,75 @@ class TtsManager private constructor(
     private val _currentVoiceId = MutableStateFlow("en-US-AriaNeural")
     val currentVoiceId = _currentVoiceId.asStateFlow()
 
+    init {
+        systemTtsEngine.setListeners(
+            onHighlight = { start, end ->
+                // Map local chunk offset to global offset
+                val globalOffset = chunkOffsets.getOrElse(currentChunkIndex) { 0 }
+                _currentHighlight.value = HighlightRange(globalOffset + start, globalOffset + end)
+            },
+            onComplete = {
+                // Chunk finished
+                currentChunkIndex++
+                processQueue()
+            },
+            onError = {
+                scope.launch {
+                    _errorEvents.emit("System TTS playback error.")
+                    stop()
+                }
+            }
+        )
+    }
+
     fun setPlaybackSpeed(speed: Float) {
         _currentSpeed.value = speed
-        if (mediaPlayer?.isPlaying == true) {
-            try {
-                val params = mediaPlayer?.playbackParams ?: android.media.PlaybackParams()
-                params.speed = speed
-                mediaPlayer?.playbackParams = params
-            } catch (e: Exception) {
-                Log.w("TtsManager", "Failed to set speed", e)
+
+        if (activeProvider == PreferenceManager.PROVIDER_SYSTEM) {
+            systemTtsEngine.setSpeed(speed)
+        } else {
+            if (mediaPlayer?.isPlaying == true) {
+                try {
+                    val params = mediaPlayer?.playbackParams ?: android.media.PlaybackParams()
+                    params.speed = speed
+                    mediaPlayer?.playbackParams = params
+                } catch (e: Exception) {
+                    Log.w("TtsManager", "Failed to set speed", e)
+                }
             }
         }
     }
+
     fun seekToLocation(globalIndex: Int) {
         if (chunks.isEmpty()) return
 
-        // 1. Find which chunk contains this index
         val targetChunkIndex = chunkOffsets.indexOfLast { it <= globalIndex }
         if (targetChunkIndex == -1) return
 
-        // 2. If it's the current chunk and playing, just seek
-        if (targetChunkIndex == currentChunkIndex && mediaPlayer != null) {
-            val chunk = cachedChunks[currentChunkIndex] ?: return
-            val subtitle = chunk.subtitles.find {
-                globalIndex >= it.globalRange.start && globalIndex < it.globalRange.end
-            } ?: chunk.subtitles.minByOrNull { kotlin.math.abs(it.globalRange.start - globalIndex) }
-
-            subtitle?.let {
-                mediaPlayer?.seekTo(it.startMillis.toInt())
+        if (activeProvider == PreferenceManager.PROVIDER_SYSTEM) {
+            systemTtsEngine.stop()
+            currentChunkIndex = targetChunkIndex
+            // System TTS doesn't support precise mid-sentence seeking easily without complex logic.
+            // We restart the chunk (sentence).
+            processQueue()
+        } else {
+            // Existing Logic
+            if (targetChunkIndex == currentChunkIndex && mediaPlayer != null) {
+                val chunk = cachedChunks[currentChunkIndex] ?: return
+                val subtitle = chunk.subtitles.find {
+                    globalIndex >= it.globalRange.start && globalIndex < it.globalRange.end
+                } ?: chunk.subtitles.minByOrNull { kotlin.math.abs(it.globalRange.start - globalIndex) }
+                subtitle?.let { mediaPlayer?.seekTo(it.startMillis.toInt()) }
+                return
             }
-            return
+            stopMonitoring()
+            if (mediaPlayer?.isPlaying == true) mediaPlayer?.stop()
+            currentChunkIndex = targetChunkIndex
+            pendingSeekGlobalIndex = globalIndex
+            processQueue()
         }
-
-        // 3. If it's a different chunk, switch and set pending seek
-        stopMonitoring()
-        if (mediaPlayer?.isPlaying == true) {
-            mediaPlayer?.stop()
-        }
-
-        currentChunkIndex = targetChunkIndex
-        pendingSeekGlobalIndex = globalIndex
-        processQueue()
     }
+
     fun skipNext() {
         val player = mediaPlayer ?: return
         val currentChunk = cachedChunks[currentChunkIndex] ?: return
@@ -200,6 +229,8 @@ class TtsManager private constructor(
         // 2. Reset Session Settings to Defaults
         val defaultSpeed = preferenceManager.playbackSpeed
         setPlaybackSpeed(defaultSpeed)
+        // Determine Provider
+        activeProvider = preferenceManager.ttsProvider
         // Sync with repository
         ContentRepository.updateContent(text, title)
         _currentTitle.value = ContentRepository.getCurrentTitle()
@@ -240,36 +271,35 @@ class TtsManager private constructor(
     fun updateVoice(newVoice: String) {
         if (voiceShortName == newVoice) return
 
-        // 1. Capture current position
         val currentGlobalIndex = _currentHighlight.value?.start
             ?: chunkOffsets.getOrElse(currentChunkIndex) { 0 }
 
-        // 2. Update voice identifier
         voiceShortName = newVoice
         _currentVoiceId.value = newVoice
-        // 3. Stop current playback but keep text state
-        stopMonitoring()
-        if (mediaPlayer?.isPlaying == true) {
-            mediaPlayer?.stop()
+
+        if (activeProvider == PreferenceManager.PROVIDER_SYSTEM) {
+            // Simply restart current chunk with new voice
+            systemTtsEngine.stop()
+            processQueue()
+        } else {
+            // Existing File-based Logic
+            stopMonitoring()
+            if (mediaPlayer?.isPlaying == true) {
+                mediaPlayer?.stop()
+            }
+            mediaPlayer?.release()
+            mediaPlayer = null
+            _isPlaying.value = false
+
+            cachedChunks.clear()
+            fetchingIndices.clear()
+
+            val newChunkIndex = chunkOffsets.indexOfLast { it <= currentGlobalIndex }
+            currentChunkIndex = if (newChunkIndex >= 0) newChunkIndex else 0
+            pendingSeekGlobalIndex = currentGlobalIndex
+
+            processQueue()
         }
-        mediaPlayer?.release()
-        mediaPlayer = null
-        _isPlaying.value = false
-
-        // 4. Clear audio cache (invalidate old voice chunks)
-        // Note: We do not clear 'chunks' or 'chunkOffsets' as text is unchanged.
-        cachedChunks.clear()
-        fetchingIndices.clear()
-
-        // 5. Calculate new chunk index based on global position
-        val newChunkIndex = chunkOffsets.indexOfLast { it <= currentGlobalIndex }
-        currentChunkIndex = if (newChunkIndex >= 0) newChunkIndex else 0
-
-        // 6. Set pending seek so playback resumes at the exact word
-        pendingSeekGlobalIndex = currentGlobalIndex
-
-        // 7. Resume playback with new voice
-        processQueue()
     }
 
     /**
@@ -278,38 +308,30 @@ class TtsManager private constructor(
      *                     If false, keeps text but resets index (Finished Song / Replay).
      */
     private fun resetPlaybackState(clearContent: Boolean) {
-        // Stop any active monitoring
-        stopMonitoring()
+        // System TTS Stop
+        systemTtsEngine.stop()
 
-        // Release player immediately
+        // MediaPlayer Stop
+        stopMonitoring()
         try {
-            if (mediaPlayer?.isPlaying == true) {
-                mediaPlayer?.stop()
-            }
+            if (mediaPlayer?.isPlaying == true) mediaPlayer?.stop()
             mediaPlayer?.release()
-        } catch (e: Exception) {
-            e.printStackTrace()
-        }
+        } catch (e: Exception) { e.printStackTrace() }
         mediaPlayer = null
 
         _isPlaying.value = false
         _isLoading.value = false
         _currentHighlight.value = null
         pendingSeekGlobalIndex = null
-
-        // Cancel background fetches
         fetchingIndices.clear()
 
-        // Reset Queue Position
-        currentChunkIndex = 0
-
+        // Don't reset currentChunkIndex if we are just pausing/stopping temporarily (unless clearContent is true)
         if (clearContent) {
-            // WIPE DATA (For new playback)
+            currentChunkIndex = 0
             chunks = emptyList()
             chunkOffsets.clear()
             cachedChunks.clear()
         }
-        // If clearContent is false, we keep chunks/cache so we can Replay
     }
 
     private fun processQueue() {
@@ -318,17 +340,38 @@ class TtsManager private constructor(
             return
         }
 
+        // Save progress (Common for both)
+        if (currentArticleId != -1L) {
+            scope.launch(Dispatchers.IO) {
+                libraryRepository.updatePlaybackPosition(currentArticleId, currentChunkIndex)
+            }
+        }
+
+        if (activeProvider == PreferenceManager.PROVIDER_SYSTEM) {
+            processSystemQueue()
+        } else {
+            processFileQueue()
+        }
+    }
+
+    private fun processSystemQueue() {
+        val text = chunks.getOrNull(currentChunkIndex) ?: return
+        _isPlaying.value = true
+        _isLoading.value = false
+
+        // System TTS handles its own threading, safe to call from here
+        systemTtsEngine.speak(text, voiceShortName, _currentSpeed.value)
+    }
+
+    // Renamed old processQueue to processFileQueue
+    private fun processFileQueue() {
         scope.launch {
             _isLoading.value = true
 
-            // Inside processQueue -> scope.launch:
-
             var chunkData: CachedChunk? = null
-            // Skip bad chunks or chunks from previous voice
             while (chunkData == null && currentChunkIndex < chunks.size) {
                 chunkData = getOrFetchChunk(currentChunkIndex)
 
-                // Validation: Discard chunk if it doesn't match current voice
                 if (chunkData != null && chunkData.voiceId != voiceShortName) {
                     cachedChunks.remove(currentChunkIndex)
                     chunkData = null
@@ -345,15 +388,13 @@ class TtsManager private constructor(
             if (chunkData != null) {
                 bufferNextChunks()
 
-                // Determine start time if there is a pending seek
                 var startMillis = 0L
                 pendingSeekGlobalIndex?.let { targetIndex ->
                     val subtitle = chunkData.subtitles.find {
                         targetIndex >= it.globalRange.start && targetIndex < it.globalRange.end
-                    } ?: chunkData.subtitles.firstOrNull() // Fallback to start
-
+                    } ?: chunkData.subtitles.firstOrNull()
                     subtitle?.let { startMillis = it.startMillis }
-                    pendingSeekGlobalIndex = null // Clear it
+                    pendingSeekGlobalIndex = null
                 }
 
                 playFile(chunkData, startMillis)
@@ -606,33 +647,38 @@ class TtsManager private constructor(
         monitorJob = null
     }
     fun togglePlayPause() {
-        mediaPlayer?.let { player ->
-            if (player.isPlaying) {
-                player.pause()
-                stopMonitoring()
+        if (activeProvider == PreferenceManager.PROVIDER_SYSTEM) {
+            if (_isPlaying.value) {
+                // Pause
+                systemTtsEngine.stop()
                 _isPlaying.value = false
             } else {
-                try {
-                    val params = player.playbackParams
-                    params.speed = _currentSpeed.value
-                    player.playbackParams = params
-
-                    player.start()
-                    _isPlaying.value = true
-
-                    val currentChunk = cachedChunks[currentChunkIndex]
-                    if (currentChunk != null) {
-                        startMonitoring(currentChunk.subtitles)
-                    }
-                    bufferNextChunks()
-                } catch (e: Exception) {
-                    Log.e("TtsManager", "Error resuming playback", e)
-                    processQueue()
-                }
-            }
-        } ?: run {
-            if (chunks.isNotEmpty()) {
+                // Resume (Restart current chunk)
                 processQueue()
+            }
+        } else {
+            // Existing MediaPlayer Logic
+            mediaPlayer?.let { player ->
+                if (player.isPlaying) {
+                    player.pause()
+                    stopMonitoring()
+                    _isPlaying.value = false
+                } else {
+                    try {
+                        val params = player.playbackParams
+                        params.speed = _currentSpeed.value
+                        player.playbackParams = params
+                        player.start()
+                        _isPlaying.value = true
+                        val currentChunk = cachedChunks[currentChunkIndex]
+                        if (currentChunk != null) startMonitoring(currentChunk.subtitles)
+                        bufferNextChunks()
+                    } catch (e: Exception) {
+                        processQueue()
+                    }
+                }
+            } ?: run {
+                if (chunks.isNotEmpty()) processQueue()
             }
         }
     }
@@ -643,7 +689,6 @@ class TtsManager private constructor(
             context.stopService(Intent(context, TtsMediaService::class.java))
         }
     }
-
     fun toggleLibrary() {
         if (currentArticleId == -1L) return
 

@@ -1,30 +1,75 @@
 package com.samuel.readaloud.repository
 
+import android.content.Context
+import android.speech.tts.TextToSpeech
 import android.util.Log
 import com.chaquo.python.Python
+import com.samuel.readaloud.data.local.PreferenceManager
 import com.samuel.readaloud.model.Voice
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import java.io.File
+import java.util.Locale
+import kotlin.coroutines.resume
 
-class TtsRepository {
+class TtsRepository(private val context: Context) {
 
     private val pythonModule by lazy {
         Python.getInstance().getModule("tts_engine")
     }
 
-    suspend fun getVoices(provider: String): List<Voice> = withContext(Dispatchers.IO) {
-        val jsonString = pythonModule.callAttr("get_voices_json", provider).toString()
-        parseVoices(jsonString)
+    suspend fun getVoices(provider: String): List<Voice> {
+        return if (provider == PreferenceManager.PROVIDER_SYSTEM) {
+            getSystemVoices()
+        } else {
+            withContext(Dispatchers.IO) {
+                val jsonString = pythonModule.callAttr("get_voices_json", provider).toString()
+                parseVoices(jsonString)
+            }
+        }
+    }
+
+    private suspend fun getSystemVoices(): List<Voice> = suspendCancellableCoroutine { cont ->
+        var tts: TextToSpeech? = null
+        tts = TextToSpeech(context) { status ->
+            if (status == TextToSpeech.SUCCESS) {
+                try {
+                    val voices = tts?.voices?.map { voice ->
+                        Voice(
+                            name = "${voice.locale.displayLanguage} (${voice.name})",
+                            shortName = voice.name,
+                            gender = "Unknown",
+                            locale = voice.locale.toLanguageTag()
+                        )
+                    }?.sortedBy { it.locale } ?: emptyList()
+
+                    if (cont.isActive) cont.resume(voices)
+                } catch (e: Exception) {
+                    Log.e("TtsRepository", "Error fetching system voices", e)
+                    if (cont.isActive) cont.resume(emptyList())
+                } finally {
+                    tts?.shutdown()
+                }
+            } else {
+                Log.e("TtsRepository", "Failed to initialize System TTS")
+                if (cont.isActive) cont.resume(emptyList())
+            }
+        }
     }
 
     suspend fun generateAudio(
         text: String,
         voiceShortName: String,
         outputFile: File,
-        provider: String // Added parameter
+        provider: String
     ): Result<Pair<File, File>> = withContext(Dispatchers.IO) {
+        // System TTS does not use this generation pipeline
+        if (provider == PreferenceManager.PROVIDER_SYSTEM) {
+            return@withContext Result.failure(Exception("System TTS uses streaming, not file generation."))
+        }
+
         try {
             Log.d("TtsRepository", "Generating audio... (Length: ${text.length}) Provider: $provider")
             // Pass provider to Python

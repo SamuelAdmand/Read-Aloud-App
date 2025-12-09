@@ -14,7 +14,7 @@ import kotlinx.coroutines.launch
 
 class TypeViewModel(application: Application) : AndroidViewModel(application) {
 
-    private val repository = TtsRepository()
+    private val repository = TtsRepository(application)
     private val ttsManager = TtsManager.getInstance(application)
     private val preferenceManager = com.samuel.readaloud.data.local.PreferenceManager(application)
 
