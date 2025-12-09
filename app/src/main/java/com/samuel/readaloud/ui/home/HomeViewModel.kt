@@ -17,7 +17,7 @@ class HomeViewModel(
     application: Application
 ) : AndroidViewModel(application) {
 
-    private val repository = TtsRepository()
+    private val repository = TtsRepository(application)
     private val preferenceManager = PreferenceManager(application)
 
     // State for the text input box

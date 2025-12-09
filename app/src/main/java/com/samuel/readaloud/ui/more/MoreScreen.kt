@@ -2,8 +2,12 @@ package com.samuel.readaloud.ui.more
 
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.GraphicEq
 import androidx.compose.material.icons.filled.Speed
@@ -23,6 +27,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.unit.dp
@@ -39,6 +44,7 @@ fun MoreScreen(
 ) {
     var showVoiceSheet by remember { mutableStateOf(false) }
     var showSpeedDialog by remember { mutableStateOf(false) }
+    var showProviderDialog by remember { mutableStateOf(false) }
 
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val scope = rememberCoroutineScope()
@@ -58,16 +64,15 @@ fun MoreScreen(
             SettingsSectionTitle("Engine")
 
             SettingsItem(
-                icon = Icons.Default.GraphicEq, // Or another suitable icon
+                icon = Icons.Default.GraphicEq,
                 title = "TTS Provider",
-                subtitle = if (viewModel.currentProvider == PreferenceManager.PROVIDER_EDGE) "Edge TTS (High Quality)" else "Google TTS (Standard)",
-                onClick = {
-                    val newProvider = if (viewModel.currentProvider == PreferenceManager.PROVIDER_EDGE)
-                        PreferenceManager.PROVIDER_GOOGLE
-                    else
-                        PreferenceManager.PROVIDER_EDGE
-                    viewModel.onProviderChanged(newProvider)
-                }
+                subtitle = when (viewModel.currentProvider) {
+                    PreferenceManager.PROVIDER_EDGE -> "Edge TTS (High Quality)"
+                    PreferenceManager.PROVIDER_GOOGLE -> "Google TTS (Standard)"
+                    PreferenceManager.PROVIDER_SYSTEM -> "System TTS (Offline/Fast)"
+                    else -> "Edge TTS"
+                },
+                onClick = { showProviderDialog = true }
             )
 
             HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp))
@@ -125,6 +130,70 @@ fun MoreScreen(
                 }
             )
         }
+    }
+    if (showProviderDialog) {
+        androidx.compose.material3.AlertDialog(
+            onDismissRequest = { showProviderDialog = false },
+            title = { Text("Select TTS Engine") },
+            text = {
+                Column {
+                    ProviderOption(
+                        title = "Edge TTS (High Quality)",
+                        isSelected = viewModel.currentProvider == PreferenceManager.PROVIDER_EDGE,
+                        onClick = {
+                            viewModel.onProviderChanged(PreferenceManager.PROVIDER_EDGE)
+                            showProviderDialog = false
+                        }
+                    )
+                    ProviderOption(
+                        title = "Google TTS (Standard)",
+                        isSelected = viewModel.currentProvider == PreferenceManager.PROVIDER_GOOGLE,
+                        onClick = {
+                            viewModel.onProviderChanged(PreferenceManager.PROVIDER_GOOGLE)
+                            showProviderDialog = false
+                        }
+                    )
+                    ProviderOption(
+                        title = "System TTS (Offline/Fast)",
+                        isSelected = viewModel.currentProvider == PreferenceManager.PROVIDER_SYSTEM,
+                        onClick = {
+                            viewModel.onProviderChanged(PreferenceManager.PROVIDER_SYSTEM)
+                            showProviderDialog = false
+                        }
+                    )
+                }
+            },
+            confirmButton = {
+                androidx.compose.material3.TextButton(onClick = { showProviderDialog = false }) {
+                    Text("Cancel")
+                }
+            }
+        )
+    }
+}
+
+@Composable
+fun ProviderOption(
+    title: String,
+    isSelected: Boolean,
+    onClick: () -> Unit
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick)
+            .padding(vertical = 12.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        androidx.compose.material3.RadioButton(
+            selected = isSelected,
+            onClick = onClick
+        )
+        Spacer(modifier = Modifier.width(8.dp))
+        Text(
+            text = title,
+            style = MaterialTheme.typography.bodyLarge
+        )
     }
 }
 

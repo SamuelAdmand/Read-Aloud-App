@@ -50,7 +50,7 @@ fun PlayerScreen(
 ) {
     val context = LocalContext.current
     val ttsManager = remember { TtsManager.getInstance(context) }
-    val repository = remember { TtsRepository() }
+    val repository = remember { TtsRepository(context) }
 
     val isPlaying by ttsManager.isPlaying.collectAsState()
     val isLoading by ttsManager.isLoading.collectAsState()

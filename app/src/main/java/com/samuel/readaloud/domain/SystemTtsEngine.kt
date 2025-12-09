@@ -43,15 +43,21 @@ class SystemTtsEngine(context: Context) {
                 onCompletionListener?.invoke()
             }
 
+            // Newer API
+            override fun onError(utteranceId: String?, errorCode: Int) {
+                Log.e("SystemTtsEngine", "Error during playback: $utteranceId, Code: $errorCode")
+                onErrorListener?.invoke()
+            }
+
+            // Deprecated API
+            @Deprecated("Deprecated in Java")
             override fun onError(utteranceId: String?) {
                 Log.e("SystemTtsEngine", "Error during playback: $utteranceId")
                 onErrorListener?.invoke()
             }
 
-            // This is the magic method for word-by-word highlighting (API 26+)
             override fun onRangeStart(utteranceId: String?, start: Int, end: Int, frame: Int) {
                 super.onRangeStart(utteranceId, start, end, frame)
-                // 'start' and 'end' are relative to the chunk text
                 onHighlightListener?.invoke(start, end)
             }
         })

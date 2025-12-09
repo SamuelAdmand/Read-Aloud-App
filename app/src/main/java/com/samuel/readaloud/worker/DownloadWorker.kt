@@ -17,7 +17,7 @@ class DownloadWorker(
 ) : CoroutineWorker(context, params) {
 
     private val libraryRepository = LibraryRepository(context)
-    private val ttsRepository = TtsRepository()
+    private val ttsRepository = TtsRepository(context)
 
     override suspend fun doWork(): Result {
         val articleId = inputData.getLong("articleId", -1L)

@@ -394,11 +394,21 @@ fun VoiceListItem(
                 style = MaterialTheme.typography.bodyLarge,
                 fontWeight = FontWeight.Medium
             )
+
+            // --- CHANGE STARTS HERE ---
+            // Hide gender if it is "Unknown" (Common in System TTS)
+            val subtitle = if (voice.gender == "Unknown") {
+                getRegionName(voice.locale)
+            } else {
+                "${getRegionName(voice.locale)} • ${voice.gender}"
+            }
+
             Text(
-                text = "${getRegionName(voice.locale)} • ${voice.gender}",
+                text = subtitle,
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
+            // --- CHANGE ENDS HERE ---
         }
 
         // Checkmark moved to the end
@@ -415,10 +425,22 @@ fun VoiceListItem(
 }
 
 // Helpers
-private fun getLanguageName(locale: String): String = try {
-    Locale.forLanguageTag(locale).displayLanguage.ifBlank { "Unknown" }
+private fun getLanguageName(localeStr: String): String = try {
+    val locale = if (localeStr.contains("_")) {
+        val parts = localeStr.split("_")
+        Locale(parts[0], parts.getOrElse(1) { "" })
+    } else {
+        Locale.forLanguageTag(localeStr)
+    }
+    locale.displayLanguage.ifBlank { "Unknown" }
 } catch (e: Exception) { "Unknown" }
 
-private fun getRegionName(locale: String): String = try {
-    Locale.forLanguageTag(locale).displayCountry.ifBlank { "Standard" }
+private fun getRegionName(localeStr: String): String = try {
+    val locale = if (localeStr.contains("_")) {
+        val parts = localeStr.split("_")
+        Locale(parts[0], parts.getOrElse(1) { "" })
+    } else {
+        Locale.forLanguageTag(localeStr)
+    }
+    locale.displayCountry.ifBlank { "Standard" }
 } catch (e: Exception) { "Standard" }
