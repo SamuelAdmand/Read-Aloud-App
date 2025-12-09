@@ -11,7 +11,7 @@ val baseNamespace = "com.samuel.readaloud"
 val baseAppName = "Read Aloud"
 
 // --- Make changes to following code before commiting anything -----
-val myAppId = "com.samuel.readaloud" // Change this to .debug, .staging, or remove suffix for release
+val myAppId = "com.samuel.readaloud.canary" // Change this to .debug, .staging, or remove suffix for release
 val myAppVersionCode = 1
 val appVersion = "1.0.0"
 // --- End of the code ----

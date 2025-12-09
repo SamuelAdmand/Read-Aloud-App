@@ -150,9 +150,18 @@ fun PlayerScreen(
                 PlayerSheetType.VOICE -> {
                     VoiceSelectionSheetContent(
                         allVoices = allVoices,
-                        currentVoiceId = currentVoiceId, // Uses observed value (session state)
+                        currentVoiceId = currentVoiceId,
                         onVoiceSelected = { voice ->
+                            // 1. Update active playback
                             ttsManager.updateVoice(voice.shortName)
+
+                            // 2. Persist as default for this provider
+                            preferenceManager.saveVoiceForProvider(
+                                preferenceManager.ttsProvider,
+                                voice.shortName,
+                                voice.name
+                            )
+
                             scope.launch { sheetState.hide() }.invokeOnCompletion { activeSheet = PlayerSheetType.NONE }
                         },
                         onDismiss = {

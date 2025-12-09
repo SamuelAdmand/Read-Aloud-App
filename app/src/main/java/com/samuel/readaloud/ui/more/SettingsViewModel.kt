@@ -63,21 +63,37 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
                 voices = emptyList()
             }
 
-            // 2. Select a default voice for the new provider
-            val default = when (provider) {
-                PreferenceManager.PROVIDER_GOOGLE -> {
-                    voices.find { it.shortName == "en" } ?: voices.firstOrNull()
+            // 2. Check if we have a saved preference for this provider
+            val savedVoice = preferenceManager.getVoiceForProvider(provider)
+
+            if (savedVoice != null) {
+                // Restore saved voice
+                val (id, name) = savedVoice
+                defaultVoiceId = id
+                defaultVoiceName = name
+                // Ensure global prefs are synced (though getVoiceForProvider logic might handle this, explicit is safe)
+                preferenceManager.voiceId = id
+                preferenceManager.voiceName = name
+            } else {
+                // Fallback: Pick a smart default
+                val default = when (provider) {
+                    PreferenceManager.PROVIDER_GOOGLE -> {
+                        voices.find { it.shortName == "en" } ?: voices.firstOrNull()
+                    }
+                    PreferenceManager.PROVIDER_SYSTEM -> {
+                        val sysLocale = java.util.Locale.getDefault().toLanguageTag()
+                        voices.find { it.locale == sysLocale } ?: voices.firstOrNull()
+                    }
+                    else -> { // Edge
+                        voices.find { it.shortName == "en-US-AriaNeural" } ?: voices.firstOrNull()
+                    }
                 }
-                PreferenceManager.PROVIDER_SYSTEM -> {
-                    // Try to find a voice matching the system locale or just pick the first one
-                    val sysLocale = java.util.Locale.getDefault().toLanguageTag()
-                    voices.find { it.locale == sysLocale } ?: voices.firstOrNull()
-                }
-                else -> { // Edge
-                    voices.find { it.shortName == "en-US-AriaNeural" } ?: voices.firstOrNull()
+
+                default?.let {
+                    // Save this new default for the provider
+                    onVoiceSelected(it)
                 }
             }
-            default?.let { onVoiceSelected(it) }
         }
     }
     // --- Actions ---
@@ -86,9 +102,9 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
         // Update State
         defaultVoiceName = voice.name
         defaultVoiceId = voice.shortName
-        // Save to Prefs
-        preferenceManager.voiceId = voice.shortName
-        preferenceManager.voiceName = voice.name
+
+        // Save using the new method (persists for this specific provider)
+        preferenceManager.saveVoiceForProvider(currentProvider, voice.shortName, voice.name)
     }
 
     fun onSpeedChanged(newSpeed: Float) {

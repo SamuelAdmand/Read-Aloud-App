@@ -64,4 +64,25 @@ class PreferenceManager(context: Context) {
             prefs.edit().putString(KEY_RECENT_VOICES, current.joinToString(",")).apply()
         }
     }
+
+    // Helper to get keys dynamic based on provider
+    private fun getProviderVoiceIdKey(provider: String) = "voice_id_$provider"
+    private fun getProviderVoiceNameKey(provider: String) = "voice_name_$provider"
+
+    fun getVoiceForProvider(provider: String): Pair<String, String>? {
+        val id = prefs.getString(getProviderVoiceIdKey(provider), null)
+        val name = prefs.getString(getProviderVoiceNameKey(provider), null)
+        return if (id != null && name != null) id to name else null
+    }
+
+    fun saveVoiceForProvider(provider: String, id: String, name: String) {
+        prefs.edit()
+            .putString(getProviderVoiceIdKey(provider), id)
+            .putString(getProviderVoiceNameKey(provider), name)
+            .apply()
+
+        // Also update the global "current" voice so the rest of the app sees it immediately
+        voiceId = id
+        voiceName = name
+    }
 }
