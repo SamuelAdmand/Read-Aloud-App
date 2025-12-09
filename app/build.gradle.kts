@@ -11,8 +11,8 @@ val baseNamespace = "com.samuel.readaloud"
 val baseAppName = "Read Aloud"
 
 // --- Make changes to following code before commiting anything -----
-val myAppId = "com.samuel.readaloud.canary" // Change this to .debug, .staging, or remove suffix for release
-val myAppVersionCode = 1
+val myAppId = "com.samuel.readaloud" // Change this to .debug, .staging, or remove suffix for release
+val myAppVersionCode = 2
 val appVersion = "1.0.0"
 // --- End of the code ----
 
@@ -138,7 +138,7 @@ chaquopy {
     defaultConfig {
         version = "3.10"
         pip {
-            install("edge-tts==7.2.1")
+            install("edge-tts==7.2.6")
             install("requests")
             install("trafilatura")
             install("gTTS")

@@ -79,6 +79,8 @@ class TtsManager private constructor(
     private var chunkOffsets: MutableList<Int> = mutableListOf()
     private var currentChunkIndex = 0
     private var voiceShortName: String = "en-US-AriaNeural"
+    private var currentSanitizedChunk: String = ""
+    private var lastSystemTtsSearchIndex: Int = 0
 
     // Buffering State
     private val cachedChunks = ConcurrentHashMap<Int, CachedChunk>()
@@ -108,9 +110,25 @@ class TtsManager private constructor(
     init {
         systemTtsEngine.setListeners(
             onHighlight = { start, end ->
-                // Map local chunk offset to global offset
-                val globalOffset = chunkOffsets.getOrElse(currentChunkIndex) { 0 }
-                _currentHighlight.value = HighlightRange(globalOffset + start, globalOffset + end)
+                // The start/end are from the SANITIZED text.
+                // We need to map them back to the RAW text for the UI.
+                if (start < currentSanitizedChunk.length && end <= currentSanitizedChunk.length) {
+                    val word = currentSanitizedChunk.substring(start, end).trim()
+
+                    if (word.isNotEmpty()) {
+                        val rawChunk = chunks.getOrElse(currentChunkIndex) { "" }
+
+                        // Find this word in the raw text, starting from where we last found a word
+                        val indexInRaw = rawChunk.indexOf(word, lastSystemTtsSearchIndex)
+
+                        if (indexInRaw != -1) {
+                            // Found it! Update global highlight
+                            lastSystemTtsSearchIndex = indexInRaw
+                            val globalOffset = chunkOffsets.getOrElse(currentChunkIndex) { 0 }
+                            _currentHighlight.value = HighlightRange(globalOffset + indexInRaw, globalOffset + indexInRaw + word.length)
+                        }
+                    }
+                }
             },
             onComplete = {
                 // Chunk finished
@@ -355,12 +373,18 @@ class TtsManager private constructor(
     }
 
     private fun processSystemQueue() {
-        val text = chunks.getOrNull(currentChunkIndex) ?: return
+        val rawText = chunks.getOrNull(currentChunkIndex) ?: return
         _isPlaying.value = true
         _isLoading.value = false
 
-        // System TTS handles its own threading, safe to call from here
-        systemTtsEngine.speak(text, voiceShortName, _currentSpeed.value)
+        // 1. Sanitize text so TTS doesn't read symbols
+        currentSanitizedChunk = TextChunker.sanitizeMarkdownForTts(rawText)
+
+        // 2. Reset search index for the new chunk
+        lastSystemTtsSearchIndex = 0
+
+        // 3. Speak sanitized text
+        systemTtsEngine.speak(currentSanitizedChunk, voiceShortName, _currentSpeed.value)
     }
 
     // Renamed old processQueue to processFileQueue

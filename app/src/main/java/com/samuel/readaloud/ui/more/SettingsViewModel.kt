@@ -10,26 +10,26 @@ import com.samuel.readaloud.data.local.PreferenceManager
 import com.samuel.readaloud.model.Voice
 import com.samuel.readaloud.repository.TtsRepository
 import kotlinx.coroutines.launch
+import java.util.Locale
 
 class SettingsViewModel(application: Application) : AndroidViewModel(application) {
 
     private val repository = TtsRepository(application)
     private val preferenceManager = PreferenceManager(application)
+
     var currentProvider by mutableStateOf(preferenceManager.ttsProvider)
         private set
+
     // --- State ---
     var defaultVoiceName by mutableStateOf(preferenceManager.voiceName)
         private set
 
-    // We need to expose the ID to pre-select correctly in the new UI
     var defaultVoiceId by mutableStateOf(preferenceManager.voiceId)
         private set
 
     var defaultSpeed by mutableStateOf(preferenceManager.playbackSpeed)
         private set
 
-    // --- Voice Selection Data ---
-    // Change: Expose raw list of voices for the new UI component
     var voices by mutableStateOf<List<Voice>>(emptyList())
         private set
 
@@ -40,15 +40,33 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
     private fun loadVoices() {
         viewModelScope.launch {
             try {
-                // Pass current provider
+                // 1. Fetch voices for current provider
                 voices = repository.getVoices(currentProvider)
+
+                // 2. Check if we have a saved preference for this provider
+                val savedVoice = preferenceManager.getVoiceForProvider(currentProvider)
+
+                if (savedVoice == null && voices.isNotEmpty()) {
+                    // FRESH INSTALL or First time using this provider
+                    // Pick a smart default and SAVE it immediately
+                    val smartDefault = getSmartDefaultVoice(currentProvider, voices)
+                    smartDefault?.let {
+                        onVoiceSelected(it)
+                    }
+                } else if (savedVoice != null) {
+                    // Ensure UI matches saved pref (if strictly needed, though global pref usually holds it)
+                    if (defaultVoiceId != savedVoice.first) {
+                        // Sync state if drift occurred
+                        defaultVoiceId = savedVoice.first
+                        defaultVoiceName = savedVoice.second
+                    }
+                }
             } catch (e: Exception) {
                 e.printStackTrace()
             }
         }
     }
 
-    // Add new function
     fun onProviderChanged(provider: String) {
         if (currentProvider == provider) return
 
@@ -56,14 +74,13 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
         preferenceManager.ttsProvider = provider
 
         viewModelScope.launch {
-            // 1. Load new voices
             try {
                 voices = repository.getVoices(provider)
             } catch (e: Exception) {
                 voices = emptyList()
             }
 
-            // 2. Check if we have a saved preference for this provider
+            // Check for saved voice for this new provider
             val savedVoice = preferenceManager.getVoiceForProvider(provider)
 
             if (savedVoice != null) {
@@ -71,46 +88,71 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
                 val (id, name) = savedVoice
                 defaultVoiceId = id
                 defaultVoiceName = name
-                // Ensure global prefs are synced (though getVoiceForProvider logic might handle this, explicit is safe)
+                // Sync global prefs
                 preferenceManager.voiceId = id
                 preferenceManager.voiceName = name
             } else {
-                // Fallback: Pick a smart default
-                val default = when (provider) {
-                    PreferenceManager.PROVIDER_GOOGLE -> {
-                        voices.find { it.shortName == "en" } ?: voices.firstOrNull()
-                    }
-                    PreferenceManager.PROVIDER_SYSTEM -> {
-                        val sysLocale = java.util.Locale.getDefault().toLanguageTag()
-                        voices.find { it.locale == sysLocale } ?: voices.firstOrNull()
-                    }
-                    else -> { // Edge
-                        voices.find { it.shortName == "en-US-AriaNeural" } ?: voices.firstOrNull()
-                    }
-                }
-
-                default?.let {
-                    // Save this new default for the provider
-                    onVoiceSelected(it)
-                }
+                // No saved voice -> Pick Smart Default
+                val default = getSmartDefaultVoice(provider, voices)
+                default?.let { onVoiceSelected(it) }
             }
         }
     }
-    // --- Actions ---
 
     fun onVoiceSelected(voice: Voice) {
-        // Update State
         defaultVoiceName = voice.name
         defaultVoiceId = voice.shortName
 
-        // Save using the new method (persists for this specific provider)
+        // Save to global prefs
+        preferenceManager.voiceId = voice.shortName
+        preferenceManager.voiceName = voice.name
+
+        // Save to provider-specific prefs
         preferenceManager.saveVoiceForProvider(currentProvider, voice.shortName, voice.name)
     }
 
     fun onSpeedChanged(newSpeed: Float) {
-        // Update State
         defaultSpeed = newSpeed
-        // Save to Prefs
         preferenceManager.playbackSpeed = newSpeed
+    }
+
+    /**
+     * Determines the best default voice for a fresh install/first-use.
+     */
+    private fun getSmartDefaultVoice(provider: String, voices: List<Voice>): Voice? {
+        val systemLocale = Locale.getDefault()
+        val systemTag = systemLocale.toLanguageTag() // e.g. "en-US"
+        val systemLang = systemLocale.language       // e.g. "en"
+
+        return when (provider) {
+            PreferenceManager.PROVIDER_EDGE -> {
+                // 1. Try the high-quality Aria voice (most popular)
+                voices.find { it.shortName == "en-GB-RyanNeural" }
+                // 2. Try matching system locale (e.g. if user is es-ES, find es-ES voice)
+                    ?: voices.find { it.locale.equals(systemTag, ignoreCase = true) }
+                    // 3. Fallback
+                    ?: voices.firstOrNull()
+            }
+            PreferenceManager.PROVIDER_GOOGLE -> {
+                // Google often uses language codes like "en" or "es"
+                voices.find { it.shortName.equals(systemLang, ignoreCase = true) }
+                    ?: voices.find { it.shortName.equals("en", ignoreCase = true) }
+                    ?: voices.firstOrNull()
+            }
+            PreferenceManager.PROVIDER_SYSTEM -> {
+                if (systemLang == "en") {
+                    val preferred = voices.find {
+                        it.shortName.equals("en-us-x-iom-network", ignoreCase = true)
+                    }
+                    if (preferred != null) return preferred
+                }
+                // System TTS: Try to match the device's active locale exactly
+                voices.find { it.locale.equals(systemTag, ignoreCase = true) }
+                // Or loosely
+                    ?: voices.find { it.locale.startsWith(systemLang, ignoreCase = true) }
+                    ?: voices.firstOrNull()
+            }
+            else -> voices.firstOrNull()
+        }
     }
 }
