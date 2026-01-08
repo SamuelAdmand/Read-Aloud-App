@@ -40,7 +40,7 @@ jobs:
         id: create_release
         uses: softprops/action-gh-release@v2
         with:
-          files: app/build/outputs/apk/debug/app-debug.apk # This uploads the app file automatically
+          files: app/build/outputs/apk/debug/*.apk # This uploads all generated APKs (universal + ABIs)
           name: Release ${{ github.ref_name }}
           draft: false
           prerelease: false
