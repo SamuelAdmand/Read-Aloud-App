@@ -1,30 +1,30 @@
-# Read Aloud App
+# Read Aloud
 
-An Android application that makes information consumption effortless by reading text aloud. It integrates directly into the Android system's text selection menu and supports sharing content from other apps.
+Hi! This is a simple Android app that helps you listen to text instead of reading it. It's perfect for when you want to rest your eyes or if you just prefer hearing things out loud.
 
-> **Note**: This project has been built using **AI and Vibe Coding** techniques, focusing on rapid prototyping and iterative development through AI-assisted coding.
+I built this app using **AI and Vibe Coding**. This means I used AI tools to help write the code and focused on making it work exactly how I wanted it to feel, rather than doing everything the traditional way.
 
-## Features
+### What it does
 
-- **System-Wide Integration**: Select text in any app and choose "Read Aloud" from the context menu to hear it instantly.
-- **Python-Powered TTS**: Leverages Python-based text-to-speech engines for high-quality audio synthesis.
-- **Smart URL Extraction**: Extracts and processes content from shared URLs.
-- **Modern UI**: Built with Jetpack Compose for a sleek and responsive experience.
+- **Read from any app**: Highlight any text, tap the "More" button (three dots), and pick **Read Aloud**. It starts reading instantly without leaving your current app.
+- **Listen to website links**: Share any link from your browser to this app, and it will grab the text and read it for you.
+- **Quick Actions**: On the home screen, you can quickly paste text from your **clipboard**, type something in manually, or just drop a link.
+- **Your Library**: The app keeps a **history** of everything you've listened to, so you can go back and listen again whenever you want.
+- **Natural Voices**: You can choose from a long list of natural-sounding voices from different countries (like Australia, Canada, UK, etc.).
+- **Control the speed**: Want it to read faster or slower? You can easily adjust the **playback speed** to fit your vibe.
+- **Bookmarks**: Save important parts of a text so you can find them easily later.
 
-## Tech Stack
+### How it's made
 
-- **Kotlin**: Core Android development.
-- **Jetpack Compose**: Modern declarative UI.
-- **Python (Chaquopy)**: Integration of Python libraries for TTS and text processing.
-- **Android Intent System**: For seamless system-level integration.
+The app uses **Kotlin** for the main structure and **Python** for the voice part. I used a tool called Chaquopy to let them work together, which helps the voice sound better and more natural.
 
-## Getting Started
+### How to use it
 
-1. Clone the repository.
-2. Open in Android Studio.
-3. Ensure you have the Python plugin (Chaquopy) configured.
-4. Build and run on an Android device (API 24+).
+1. Download the code to your computer.
+2. Open it using Android Studio.
+3. Make sure the Python plugin is ready to go.
+4. Run it on your phone!
 
-## License
+### License
 
-This project is developed for personal use and demonstration of AI-assisted development.
+This is a personal project to show how cool it is to build apps when you partner up with AI.
