@@ -4,6 +4,18 @@ Hi! This is a simple Android app that helps you listen to text instead of readin
 
 I built this app using **AI and Vibe Coding**. This means I used AI tools to help write the code and focused on making it work exactly how I wanted it to feel, rather than doing everything the traditional way.
 
+### Preview
+
+<p align="center">
+  <img src="screenshots/home_screen.jpg" width="30%" />
+  <img src="screenshots/now_playing.jpg" width="30%" />
+  <img src="screenshots/voice_selection.jpg" width="30%" />
+</p>
+<p align="center">
+  <img src="screenshots/history.jpg" width="30%" />
+  <img src="screenshots/playback_speed.jpg" width="30%" />
+</p>
+
 ### What it does
 
 - **Read from any app**: Highlight any text, tap the "More" button (three dots), and pick **Read Aloud**. It starts reading instantly without leaving your current app.
