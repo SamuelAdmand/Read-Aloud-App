@@ -32,14 +32,21 @@ jobs:
       - name: Grant execute permission for gradlew
         run: chmod +x gradlew
 
-      - name: Build APK
-        run: ./gradlew assembleDebug # Building the "Debug" APK because it's easier to share without complex signing keys
+      - name: Build Release APK
+        run: |
+          echo "${{ secrets.KEYSTORE_BASE64 }}" | base64 -d > app/release.jks
+          ./gradlew assembleRelease
+        env:
+          KEYSTORE_PATH: release.jks
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
 
       - name: Create GitHub Release
         id: create_release
         uses: softprops/action-gh-release@v2
         with:
-          files: app/build/outputs/apk/debug/*.apk # This uploads all generated APKs (universal + ABIs)
+          files: app/build/outputs/apk/release/*.apk # Note the change from 'debug' to 'release'
           name: Release ${{ github.ref_name }}
           draft: false
           prerelease: false
