@@ -2,6 +2,8 @@
 
 Hi! This is a simple Android app that helps you listen to text instead of reading it. It's perfect for when you want to rest your eyes or if you just prefer hearing things out loud.
 
+[![Download App](https://img.shields.io/badge/Download-APK-blue?style=for-the-badge&logo=android)](https://github.com/SamuelAdmand/Read-Aloud-App/releases/latest)
+
 I built this app using **AI and Vibe Coding**. This means I used AI tools to help write the code and focused on making it work exactly how I wanted it to feel, rather than doing everything the traditional way.
 
 ### Preview
@@ -32,6 +34,12 @@ The app uses **Kotlin** for the main structure and **Python** for the voice part
 
 ### How to use it
 
+#### Option 1: Install the APK (Easiest)
+1. Go to the [Releases](https://github.com/SamuelAdmand/Read-Aloud-App/releases/latest) page.
+2. Download the APK that matches your phone's architecture (usually `arm64-v8a` for modern phones, or `universal`).
+3. Open the file on your phone and install it.
+
+#### Option 2: Run from source
 1. Download the code to your computer.
 2. Open it using Android Studio.
 3. Make sure the Python plugin is ready to go.
