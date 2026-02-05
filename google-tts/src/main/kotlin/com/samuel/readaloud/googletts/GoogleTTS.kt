@@ -59,8 +59,14 @@ class GoogleTTS(
         val encodedText = URLEncoder.encode(part, "UTF-8")
         val speed = if (slow) "0.3" else "1"
         
-        // This is a more reliable and simple Google TTS endpoint
-        val url = "https://translate.googleapis.com/translate_tts?client=gtx&ie=UTF-8&tl=$lang&q=$encodedText&ttsspeed=$speed"
+        // Extract language code (e.g., "en-US-AriaNeural" -> "en-US" or "en")
+        val langParts = lang.split("-")
+        val langCode = if (langParts.size >= 2) "${langParts[0]}-${langParts[1]}" else langParts[0]
+        
+        Log.d("GoogleTTS", "Fetching audio for lang: $langCode, text snippet: ${part.take(20)}")
+        
+        // Using client=tw-ob which is often more stable for this endpoint
+        val url = "https://translate.google.com/translate_tts?ie=UTF-8&q=$encodedText&tl=$langCode&total=1&idx=0&textlen=${part.length}&client=tw-ob&ttsspeed=$speed"
         
         val request = Request.Builder()
             .url(url)

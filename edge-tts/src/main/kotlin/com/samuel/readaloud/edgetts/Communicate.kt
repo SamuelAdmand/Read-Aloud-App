@@ -185,7 +185,7 @@ class Communicate(
                 }
 
                 if (headers["Path"] == "audio") {
-                    val audioData = data.sliceArray(2 + headerLength + 2 until data.size)
+                    val audioData = data.sliceArray(2 + headerLength until data.size)
                     Log.v("Communicate", "Received audio chunk: ${audioData.size} bytes")
                     if (audioData.isNotEmpty()) {
                         trySend(TTSChunk.Audio(audioData))
