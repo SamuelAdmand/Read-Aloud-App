@@ -11,7 +11,6 @@ val baseNamespace = "com.samuel.readaloud"
 val baseAppName = "Read Aloud"
 
 // --- Make changes to following code before commiting anything -----
-val myAppId = "com.samuel.readaloud" // Change this to .debug, .staging, or remove suffix for release
 val myAppVersionCode = 2
 val appVersion = "1.0.0"
 // --- End of the code ----
@@ -23,33 +22,11 @@ android {
     }
 
     defaultConfig {
-        applicationId = myAppId
+        applicationId = baseNamespace
         minSdk = 30
         targetSdk = 36
         versionCode = myAppVersionCode
-
-        // --- VERSION NAME LOGIC ---
-        val suffix = myAppId.removePrefix(baseNamespace)
-
-        versionName = if (suffix.isNotEmpty()) {
-            // Converts ".beta" -> "-beta" and appends to version
-            "$appVersion${suffix.replaceFirst(".", "-")}"
-        } else {
-            appVersion
-        }
-
-        // --- APP NAME LOGIC ---
-        val finalAppName = if (suffix.isNotEmpty()) {
-            // 1. Remove dot. 2. Capitalize (e.g., ".beta" -> "Beta")
-            //noinspection WrongGradleMethod
-            val cleanSuffix = suffix.replace(".", "").replaceFirstChar { it.uppercase() }
-            "RA $cleanSuffix"
-        } else {
-            baseAppName
-        }
-
-        // Inject app_name resource dynamically
-        resValue("string", "app_name", finalAppName)
+        versionName = appVersion
 
         ndk {
             abiFilters += listOf("armeabi-v7a", "arm64-v8a", "x86", "x86_64")
@@ -86,7 +63,13 @@ android {
     }
 
     buildTypes {
+        debug {
+            applicationIdSuffix = ".debug"
+            versionNameSuffix = "-debug"
+            resValue("string", "app_name", "RA Debug")
+        }
         release {
+            resValue("string", "app_name", baseAppName)
             signingConfig = signingConfigs.getByName("release")
             isMinifyEnabled = true
             isShrinkResources = true

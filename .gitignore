@@ -17,4 +17,6 @@ local.properties
 /.idea/.name
 /app/release
 ROADMAP.md
-
+/reference
+*.xml
+.idea
