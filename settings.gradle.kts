@@ -21,4 +21,6 @@ dependencyResolutionManagement {
 
 rootProject.name = "Read Aloud"
 include(":app")
+include(":edge-tts")
+include(":google-tts")
  

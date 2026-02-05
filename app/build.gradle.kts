@@ -54,7 +54,7 @@ android {
     applicationVariants.all {
         outputs.all {
             val output = this as com.android.build.gradle.internal.api.BaseVariantOutputImpl
-            val abi = output.getFilter(com.android.build.OutputFile.ABI) ?: "universal"
+            val abi = output.getFilter("ABI") ?: "universal"
             output.outputFileName = "ReadAloud-${versionName}-${abi}.apk"
         }
     }
@@ -144,4 +144,8 @@ dependencies {
     // Native Content Extraction
     implementation("net.dankito.readability4j:readability4j:1.0.8")
     implementation("org.jsoup:jsoup:1.18.3")
+
+    // Native TTS Modules
+    implementation(project(":edge-tts"))
+    implementation(project(":google-tts"))
 }
