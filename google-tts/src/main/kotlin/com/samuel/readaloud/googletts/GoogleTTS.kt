@@ -1,16 +1,12 @@
 package com.samuel.readaloud.googletts
 
-import com.google.gson.Gson
+import android.util.Log
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.*
-import okhttp3.MediaType.Companion.toMediaType
-import okhttp3.RequestBody.Companion.toRequestBody
 import java.io.File
 import java.io.FileOutputStream
 import java.net.URLEncoder
-import java.util.*
-import java.util.regex.Pattern
 
 class GoogleTTS(
     private val text: String,
@@ -18,71 +14,72 @@ class GoogleTTS(
     private val slow: Boolean = false
 ) {
     private val client = OkHttpClient()
-    private val gson = Gson()
 
     suspend fun save(path: String) = withContext(Dispatchers.IO) {
         val file = File(path)
         val out = FileOutputStream(file)
+        Log.d("GoogleTTS", "Saving audio to $path using translate_tts API")
         try {
             val tokens = tokenize(text)
+            Log.d("GoogleTTS", "Split text into ${tokens.size} tokens")
             for (token in tokens) {
                 val audioData = fetchAudio(token)
                 if (audioData != null) {
+                    Log.v("GoogleTTS", "Fetched chunk: ${audioData.size} bytes")
                     out.write(audioData)
+                } else {
+                    Log.e("GoogleTTS", "Failed to fetch audio for token: $token")
                 }
             }
+        } catch (e: Exception) {
+            Log.e("GoogleTTS", "Error during save", e)
         } finally {
             out.close()
         }
     }
 
     private fun tokenize(text: String): List<String> {
-        // Simplified tokenization: split by length (max 100 chars)
-        // Python gTTS does more complex stuff, but this is a start.
         val tokens = mutableListOf<String>()
         var remaining = text.trim()
         while (remaining.isNotEmpty()) {
-            if (remaining.length <= 100) {
+            if (remaining.length <= 200) {
                 tokens.add(remaining)
                 break
             }
-            var splitIndex = remaining.lastIndexOf(' ', 100)
-            if (splitIndex == -1) splitIndex = 100
-            tokens.add(remaining.substring(0, splitIndex).trim())
-            remaining = remaining.substring(splitIndex).trim()
+            var splitIndex = remaining.lastIndexOf('.', 200)
+            if (splitIndex == -1) splitIndex = remaining.lastIndexOf(' ', 200)
+            if (splitIndex == -1) splitIndex = 200
+            tokens.add(remaining.substring(0, splitIndex + 1).trim())
+            remaining = remaining.substring(splitIndex + 1).trim()
         }
         return tokens
     }
 
     private suspend fun fetchAudio(part: String): ByteArray? {
-        val speed = if (slow) "true" else "null"
-        val parameter = listOf(part, lang, speed, "null")
-        val escapedParameter = gson.toJson(parameter)
-        val rpc = listOf(listOf(listOf(Constants.RPC_ID, escapedParameter, null, "generic")))
-        val escapedRpc = gson.toJson(rpc)
+        val encodedText = URLEncoder.encode(part, "UTF-8")
+        val speed = if (slow) "0.3" else "1"
         
-        val content = "f.req=" + URLEncoder.encode(escapedRpc, "UTF-8") + "&"
-        val requestBody = content.toRequestBody("application/x-www-form-urlencoded;charset=utf-8".toMediaType())
+        // This is a more reliable and simple Google TTS endpoint
+        val url = "https://translate.googleapis.com/translate_tts?client=gtx&ie=UTF-8&tl=$lang&q=$encodedText&ttsspeed=$speed"
         
         val request = Request.Builder()
-            .url(Constants.TRANSLATE_URL)
-            .apply {
-                Constants.HEADERS.forEach { (k, v) -> header(k, v) }
-            }
-            .post(requestBody)
+            .url(url)
+            .header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
             .build()
 
-        client.newCall(request).execute().use { response ->
-            if (!response.isSuccessful) return null
-            
-            val body = response.body?.string() ?: return null
-            val pattern = Pattern.compile("jQ1olc\",\"\\[\\\\\"(.*)\\\\\"\\]")
-            val matcher = pattern.matcher(body)
-            if (matcher.find()) {
-                val base64Data = matcher.group(1) ?: return null
-                return Base64.getDecoder().decode(base64Data)
+        return try {
+            client.newCall(request).execute().use { response ->
+                Log.d("GoogleTTS", "HTTP response: ${response.code}")
+                if (response.isSuccessful) {
+                    response.body?.bytes()
+                } else {
+                    Log.e("GoogleTTS", "Request failed: ${response.message}")
+                    null
+                }
             }
+        } catch (e: Exception) {
+            Log.e("GoogleTTS", "Network error", e)
+            null
         }
-        return null
     }
 }

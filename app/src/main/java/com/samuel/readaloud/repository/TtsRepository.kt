@@ -25,14 +25,22 @@ class TtsRepository(private val context: Context) {
     }
 
     private suspend fun getEdgeVoices(): List<Voice> {
-        return Communicate.listVoices().map { voice ->
-            Voice(
-                name = voice.FriendlyName ?: voice.ShortName,
-                shortName = voice.ShortName,
-                gender = voice.Gender,
-                locale = voice.Locale
-            )
-        }.sortedBy { it.locale }
+        Log.d("TtsRepository", "Fetching Edge voices...")
+        return try {
+            val voices = Communicate.listVoices().map { voice ->
+                Voice(
+                    name = voice.FriendlyName ?: voice.ShortName,
+                    shortName = voice.ShortName,
+                    gender = voice.Gender,
+                    locale = voice.Locale
+                )
+            }.sortedBy { it.locale }
+            Log.d("TtsRepository", "Fetched ${voices.size} Edge voices")
+            voices
+        } catch (e: Exception) {
+            Log.e("TtsRepository", "Error fetching Edge voices", e)
+            emptyList()
+        }
     }
 
     private fun getGoogleVoices(): List<Voice> {
@@ -88,23 +96,40 @@ class TtsRepository(private val context: Context) {
         outputFile: File,
         provider: String
     ): Result<Pair<File, File>> = withContext(Dispatchers.IO) {
+        Log.d("TtsRepository", "Generating audio for provider: $provider, voice: $voiceShortName")
         try {
             when (provider) {
                 PreferenceManager.PROVIDER_EDGE -> {
                     val subtitleFile = File(outputFile.absolutePath.replace(".mp3", ".srt"))
                     val communicate = Communicate(text, voice = voiceShortName)
+                    Log.d("TtsRepository", "Starting Edge TTS stream to: ${outputFile.name}")
                     communicate.save(outputFile.absolutePath, subtitleFile.absolutePath)
-                    Result.success(outputFile to subtitleFile)
+                    Log.d("TtsRepository", "Edge TTS generation complete: ${outputFile.length()} bytes")
+                    if (outputFile.length() == 0L) {
+                        Result.failure(Exception("Edge TTS generated an empty file"))
+                    } else {
+                        Result.success(outputFile to subtitleFile)
+                    }
                 }
                 PreferenceManager.PROVIDER_GOOGLE -> {
                     val googleTTS = GoogleTTS(text, lang = voiceShortName)
+                    Log.d("TtsRepository", "Starting Google TTS request to: ${outputFile.name}")
                     googleTTS.save(outputFile.absolutePath)
-                    // Google doesn't provide boundaries, so no subtitle file
-                    Result.success(outputFile to outputFile) // Pair with same if no sub
+                    Log.d("TtsRepository", "Google TTS generation complete: ${outputFile.length()} bytes")
+                    if (outputFile.length() == 0L) {
+                        Result.failure(Exception("Google TTS generated an empty file"))
+                    } else {
+                        // Google doesn't provide boundaries, so no subtitle file
+                        Result.success(outputFile to outputFile) // Pair with same if no sub
+                    }
                 }
-                else -> Result.failure(Exception("Unsupported provider: $provider"))
+                else -> {
+                    Log.e("TtsRepository", "Unsupported provider: $provider")
+                    Result.failure(Exception("Unsupported provider: $provider"))
+                }
             }
         } catch (e: Exception) {
+            Log.e("TtsRepository", "Global error during audio generation", e)
             Result.failure(e)
         }
     }

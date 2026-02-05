@@ -9,8 +9,8 @@ object Constants {
 
     const val DEFAULT_VOICE = "en-US-EmmaMultilingualNeural"
 
-    const val CHROMIUM_FULL_VERSION = "131.0.3650.75"
-    const val CHROMIUM_MAJOR_VERSION = "131"
+    const val CHROMIUM_FULL_VERSION = "143.0.3650.75"
+    const val CHROMIUM_MAJOR_VERSION = "143"
     const val SEC_MS_GEC_VERSION = "1-$CHROMIUM_FULL_VERSION"
 
     val BASE_HEADERS = mapOf(

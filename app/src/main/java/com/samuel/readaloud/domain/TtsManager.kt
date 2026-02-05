@@ -395,17 +395,22 @@ class TtsManager private constructor(
         }
         val currentProvider = preferenceManager.ttsProvider
         val outputFile = File(audioDir, "$baseName.mp3")
+        val srtFile = File(audioDir, "$baseName.srt")
 
         val result = if (outputFile.exists() && outputFile.length() > 0) {
-            val srtFile = File(audioDir, "$baseName.mp3.srt")
+            Log.d("TtsManager", "Using cached audio: ${outputFile.name}")
             if (srtFile.exists()) Result.success(Pair(outputFile, srtFile))
             else repository.generateAudio(ttsText, targetVoice, outputFile, currentProvider)
         } else {
+            Log.d("TtsManager", "Fetching new audio: ${outputFile.name} from $currentProvider")
             repository.generateAudio(ttsText, targetVoice, outputFile, currentProvider)
         }
 
         if (result.isFailure && currentProvider == PreferenceManager.PROVIDER_EDGE) {
+            Log.e("TtsManager", "Edge TTS generation failed", result.exceptionOrNull())
             scope.launch { _errorEvents.emit("Edge TTS failed. Please switch to Google TTS in Settings.") }
+        } else if (result.isFailure) {
+            Log.e("TtsManager", "$currentProvider TTS generation failed", result.exceptionOrNull())
         }
 
         fetchingIndices.remove(index)

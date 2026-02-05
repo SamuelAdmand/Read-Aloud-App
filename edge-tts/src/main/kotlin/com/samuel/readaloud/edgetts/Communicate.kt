@@ -1,5 +1,6 @@
 package com.samuel.readaloud.edgetts
 
+import android.util.Log
 import com.google.gson.Gson
 import com.google.gson.JsonObject
 import kotlinx.coroutines.Dispatchers
@@ -86,9 +87,11 @@ class Communicate(
     private fun streamChunk(request: Request, ssml: String, state: CommunicateState): Flow<TTSChunk> = callbackFlow {
         val requestId = Util.connectId()
         val timestamp = Util.dateToString()
+        Log.d("Communicate", "streamChunk: Opening WebSocket for requestId=$requestId")
 
         val listener = object : WebSocketListener() {
             override fun onOpen(webSocket: WebSocket, response: Response) {
+                Log.d("Communicate", "WebSocket opened: ${response.code}")
                 // Send command
                 val wd = if (ttsConfig.boundary == "WordBoundary") "true" else "false"
                 val sq = if (ttsConfig.boundary != "WordBoundary") "true" else "false"
@@ -101,13 +104,16 @@ class Communicate(
                         "},\"outputFormat\":\"audio-24khz-48kbitrate-mono-mp3\"}}}}"
                 
                 webSocket.send(configMsg)
+                Log.d("Communicate", "Sent speech.config")
                 
                 // Send SSML
                 val ssmlMsg = Util.ssmlHeadersPlusData(requestId, timestamp, ssml)
                 webSocket.send(ssmlMsg)
+                Log.d("Communicate", "Sent SSML")
             }
 
             override fun onMessage(webSocket: WebSocket, text: String) {
+                Log.v("Communicate", "onMessage (text): $text")
                 val lines = text.split("\r\n")
                 val headers = mutableMapOf<String, String>()
                 var bodyStartIndex = 0
@@ -150,8 +156,10 @@ class Communicate(
                         // Ignore or log
                     }
                 } else if (path == "turn.end") {
+                    Log.d("Communicate", "turn.end received")
                     state.offsetCompensation = state.lastDurationOffset + 8_750_000
                     webSocket.close(1000, "Done")
+                    close()
                 }
             }
 
@@ -160,7 +168,10 @@ class Communicate(
                 if (data.size < 2) return
                 
                 val headerLength = ((data[0].toInt() and 0xFF) shl 8) or (data[1].toInt() and 0xFF)
-                if (headerLength > data.size) return
+                if (headerLength > data.size) {
+                    Log.e("Communicate", "Invalid binary message: headerLength=$headerLength, dataSize=${data.size}")
+                    return
+                }
                 
                 val headerBytes = data.sliceArray(2 until 2 + headerLength)
                 val headerText = String(headerBytes, Charsets.UTF_8)
@@ -174,7 +185,8 @@ class Communicate(
                 }
 
                 if (headers["Path"] == "audio") {
-                    val audioData = data.sliceArray(2 + headerLength + 2 until data.size) // +2 for \r\n
+                    val audioData = data.sliceArray(2 + headerLength + 2 until data.size)
+                    Log.v("Communicate", "Received audio chunk: ${audioData.size} bytes")
                     if (audioData.isNotEmpty()) {
                         trySend(TTSChunk.Audio(audioData))
                     }
@@ -182,10 +194,12 @@ class Communicate(
             }
 
             override fun onClosing(webSocket: WebSocket, code: Int, reason: String) {
+                Log.d("Communicate", "WebSocket closing: $code / $reason")
                 close()
             }
 
             override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) {
+                Log.e("Communicate", "WebSocket failure: ${t.message}", t)
                 close(t)
             }
         }
