@@ -27,8 +27,6 @@ import androidx.compose.ui.window.Dialog
 import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.WorkManager
 import androidx.work.workDataOf
-import com.chaquo.python.Python
-import com.chaquo.python.android.AndroidPlatform
 import com.samuel.readaloud.data.local.PreferenceManager
 import com.samuel.readaloud.domain.TextChunker
 import com.samuel.readaloud.domain.TtsManager
@@ -37,15 +35,9 @@ import com.samuel.readaloud.repository.UrlRepository
 import com.samuel.readaloud.ui.theme.ReadAloudTheme
 import com.samuel.readaloud.worker.DownloadWorker
 import java.util.regex.Pattern
-
 class ShareActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-
-        // Ensure Python is started (needed if app was killed)
-        if (!Python.isStarted()) {
-            Python.start(AndroidPlatform(this))
-        }
 
         val sharedText = intent.getStringExtra(Intent.EXTRA_TEXT) ?: ""
         // Extract URL

@@ -5,8 +5,6 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
-import com.chaquo.python.Python
-import com.chaquo.python.android.AndroidPlatform
 import com.samuel.readaloud.data.local.PreferenceManager
 import com.samuel.readaloud.domain.TtsManager
 import com.samuel.readaloud.ui.MainScreen
@@ -16,11 +14,6 @@ import java.util.regex.Pattern
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-
-        // --- Restore Python Initialization ---
-        if (!Python.isStarted()) {
-            Python.start(AndroidPlatform(this))
-        }
 
         // Handle "Read Aloud" from system text selection menu
         if (intent.action == Intent.ACTION_PROCESS_TEXT) {

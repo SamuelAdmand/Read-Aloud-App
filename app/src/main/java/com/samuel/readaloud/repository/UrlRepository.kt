@@ -1,14 +1,12 @@
 package com.samuel.readaloud.repository
 
 import android.content.Context
-import com.chaquo.python.Python
+import com.samuel.readaloud.domain.extractor.ReadabilityExtractor
 import com.samuel.readaloud.model.Article
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
 import okhttp3.Request
-import org.json.JSONObject
-import java.io.IOException
 import java.util.concurrent.TimeUnit
 
 class UrlRepository(private val context: Context) {
@@ -25,28 +23,28 @@ class UrlRepository(private val context: Context) {
         .retryOnConnectionFailure(true)
         .build()
 
+    // Extractor
+    private val nativeExtractor = ReadabilityExtractor()
+
     suspend fun extractArticle(url: String): Result<Article> = withContext(Dispatchers.IO) {
         // Strategy 1: Try Fast OkHttp Download
         val okHttpHtml = fetchWithOkHttp(url)
 
         // Attempt extraction with OkHttp content
         var extractionResult = if (okHttpHtml != null) {
-            parseWithPython(okHttpHtml, url)
+            nativeExtractor.extract(okHttpHtml, url)
         } else {
             Result.failure(Exception("OkHttp failed"))
         }
 
         // Strategy 2: The "Nuclear Option" (WebView Fallback)
-        // If OkHttp failed completely, OR if Python couldn't find text (likely JS-rendered content)
         if (extractionResult.isFailure) {
             try {
-                // Switch to Main thread for WebView (handled internally by WebViewExtractor), then back here
                 val webViewHtmlResult = WebViewExtractor(context).getHtml(url)
-
                 if (webViewHtmlResult.isSuccess) {
                     val webViewHtml = webViewHtmlResult.getOrNull()
                     if (!webViewHtml.isNullOrBlank()) {
-                        extractionResult = parseWithPython(webViewHtml, url)
+                        extractionResult = nativeExtractor.extract(webViewHtml, url)
                     }
                 }
             } catch (e: Exception) {
@@ -81,31 +79,6 @@ class UrlRepository(private val context: Context) {
             }
         } catch (e: Exception) {
             null
-        }
-    }
-
-    private fun parseWithPython(htmlContent: String, url: String): Result<Article> {
-        return try {
-            val python = Python.getInstance()
-            val module = python.getModule("url_extractor")
-
-            val jsonResult = module.callAttr("extract_from_html", htmlContent, url).toString()
-            val jsonObject = JSONObject(jsonResult)
-
-            if (jsonObject.has("error")) {
-                Result.failure(Exception(jsonObject.getString("error")))
-            } else {
-                val title = jsonObject.optString("title", "No Title")
-                val text = jsonObject.optString("text", "")
-
-                if (text.isBlank()) {
-                    Result.failure(Exception("No text found"))
-                } else {
-                    Result.success(Article(title = title, text = text, sourceUrl = url))
-                }
-            }
-        } catch (e: Exception) {
-            Result.failure(e)
         }
     }
 }

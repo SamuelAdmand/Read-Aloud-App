@@ -2,7 +2,6 @@ plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
     alias(libs.plugins.kotlin.compose)
-    alias(libs.plugins.chaquopy)
     alias(libs.plugins.ksp)
 }
 
@@ -17,9 +16,7 @@ val appVersion = "1.0.0"
 
 android {
     namespace = baseNamespace
-    compileSdk {
-        version = release(36)
-    }
+    compileSdk = 36
 
     defaultConfig {
         applicationId = baseNamespace
@@ -143,16 +140,8 @@ dependencies {
     implementation("com.squareup.okhttp3:okhttp:5.3.2")
     // Gson
     implementation("com.google.code.gson:gson:2.13.2")
-}
 
-chaquopy {
-    defaultConfig {
-        version = "3.10"
-        pip {
-            install("edge-tts==7.2.6")
-            install("requests")
-            install("trafilatura")
-            install("gTTS")
-        }
-    }
+    // Native Content Extraction
+    implementation("net.dankito.readability4j:readability4j:1.0.8")
+    implementation("org.jsoup:jsoup:1.18.3")
 }
