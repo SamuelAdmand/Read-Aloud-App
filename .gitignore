@@ -1,22 +1,44 @@
+# Built artifacts
+build/
+.gradle/
+bin/
+gen/
+out/
+
+# Android Studio / IntelliJ
+.idea/
 *.iml
-.gradle
+*.iws
+*.ipr
+/captures/
+.externalNativeBuild/
+.cxx/
+
+# Gradle
+.gradle/
 /local.properties
-/.idea/caches
-/.idea/libraries
-/.idea/modules.xml
-/.idea/workspace.xml
-/.idea/navEditor.xml
-/.idea/assetWizardSettings.xml
+
+# OS specific
 .DS_Store
-/build
-/captures
-.externalNativeBuild
-.cxx
-local.properties
-/.idea/misc.xml
-/.idea/.name
-/app/release
+Thumbs.db
+*.swp
+
+# Project specific
+/reference/
+/audio_cache/
+/app/release/
+*.mp3
+*.srt
 ROADMAP.md
-/reference
-*.xml
-.idea
+sync_project.py
+
+# Security
+*.jks
+*.keystore
+google_services.json
+
+# Trunk (if used for linting/formatting)
+.trunk/
+
+# Kotlin
+.kotlin/
