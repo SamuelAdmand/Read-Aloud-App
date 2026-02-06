@@ -21,3 +21,11 @@
 #-renamesourcefileattribute SourceFile
 # Fix R8 error: Missing class org.slf4j.impl.StaticLoggerBinder
 -dontwarn org.slf4j.**
+
+# Edge TTS: Keep data classes for Gson deserialization
+-keep class com.samuel.readaloud.edgetts.EdgeVoice { *; }
+-keep class com.samuel.readaloud.edgetts.TTSChunk { *; }
+-keep class com.samuel.readaloud.edgetts.TTSChunk$** { *; }
+-keep class com.samuel.readaloud.edgetts.TTSConfig { *; }
+-keep class com.samuel.readaloud.edgetts.CommunicateState { *; }
+

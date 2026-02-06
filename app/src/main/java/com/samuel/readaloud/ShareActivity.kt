@@ -61,13 +61,20 @@ class ShareActivity : ComponentActivity() {
                 val preferenceManager = remember { PreferenceManager(applicationContext) }
 
                 if (showDialog) {
+                    val dialogMessage = if (sharedUrl.startsWith("http")) {
+                        "What would you like to do with this link?\n\n$sharedUrl"
+                    } else {
+                        val preview = if (sharedText.length > 100) sharedText.take(100) + "..." else sharedText
+                        "What would you like to do with this text?\n\n$preview"
+                    }
+
                     AlertDialog(
                         onDismissRequest = {
                             showDialog = false
                             finish()
                         },
-                        title = { Text("Import Article") },
-                        text = { Text("What would you like to do with this link?\n\n$sharedUrl") },
+                        title = { Text(if (sharedUrl.startsWith("http")) "Import Article" else "Import Text") },
+                        text = { Text(dialogMessage) },
                         confirmButton = {
                             Button(
                                 onClick = {
@@ -109,15 +116,27 @@ class ShareActivity : ComponentActivity() {
 
                     // Perform extraction and action
                     LaunchedEffect(action) {
-                        val result = urlRepository.extractArticle(sharedUrl)
-                        result.fold(
+                        val articleResult = if (sharedUrl.startsWith("http")) {
+                            urlRepository.extractArticle(sharedUrl)
+                        } else {
+                            // Directly create article from shared text
+                            Result.success(
+                                com.samuel.readaloud.model.Article(
+                                    title = "Shared Text ${java.text.SimpleDateFormat("yyyy-MM-dd HH:mm", java.util.Locale.getDefault()).format(java.util.Date())}",
+                                    text = sharedText,
+                                    sourceUrl = "shared://text"
+                                )
+                            )
+                        }
+
+                        articleResult.fold(
                             onSuccess = { article ->
                                 if (action == ShareAction.PLAY) {
                                     ttsManager.playText(
                                         text = article.text,
                                         voice = preferenceManager.voiceId,
                                         title = article.title,
-                                        sourceUrl = sharedUrl
+                                        sourceUrl = article.sourceUrl
                                     )
                                 } else if (action == ShareAction.SAVE) {
                                     // 1. Chunk the text for offline storage
@@ -127,7 +146,7 @@ class ShareActivity : ComponentActivity() {
                                     val id = libraryRepository.upsertHistory(
                                         title = article.title,
                                         text = article.text,
-                                        sourceUrl = sharedUrl,
+                                        sourceUrl = article.sourceUrl,
                                         chunks = chunks
                                     )
 
