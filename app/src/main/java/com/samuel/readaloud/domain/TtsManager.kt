@@ -53,7 +53,9 @@ class TtsManager private constructor(
 ) {
     private val libraryRepository = LibraryRepository(context)
     private val preferenceManager = PreferenceManager(context)
-    private val systemTtsEngine = SystemTtsEngine(context)
+    private val systemTtsEngine = SystemTtsEngine(context).apply {
+        reInitialize(preferenceManager.systemTtsEngine)
+    }
     
     // Players
     private val filePlayer = MediaPlayerAudioPlayer()
@@ -176,8 +178,15 @@ class TtsManager private constructor(
     }
 
     fun setPlaybackSpeed(speed: Float) {
+        if (_currentSpeed.value == speed) return
         _currentSpeed.value = speed
         activePlayer.setSpeed(speed)
+
+        if (activeProvider == PreferenceManager.PROVIDER_SYSTEM && activePlayer.isPlaying.value) {
+            val currentGlobalIndex = _currentHighlight.value?.start
+                ?: chunkOffsets.getOrElse(currentChunkIndex) { 0 }
+            seekToLocation(currentGlobalIndex)
+        }
     }
 
     fun seekToLocation(globalIndex: Int) {
@@ -281,6 +290,15 @@ class TtsManager private constructor(
         pendingSeekGlobalIndex = currentGlobalIndex
 
         processQueue()
+    }
+
+    fun updateSystemEngine(enginePackage: String?) {
+        systemTtsEngine.reInitialize(enginePackage)
+        if (activeProvider == PreferenceManager.PROVIDER_SYSTEM) {
+            // Restart playback or just clear cache if multiple system engines are used
+            activePlayer.stop()
+            processQueue()
+        }
     }
 
     private fun resetPlaybackState(clearContent: Boolean) {
@@ -492,13 +510,30 @@ class TtsManager private constructor(
     }
 
     fun togglePlayPause() {
-        if (_isPlaying.value) activePlayer.pause()
-        else {
-            if (chunks.isEmpty()) return
-            // Check if player can simply resume
+        val currentlyPlaying = activePlayer.isPlaying.value
+        _isPlaying.value = !currentlyPlaying // Immediate UI feedback
+        
+        if (currentlyPlaying) {
+            activePlayer.pause()
+        } else {
+            if (chunks.isEmpty()) {
+                _isPlaying.value = false
+                return
+            }
+            
+            // If we've reached the end, restart from beginning
+            if (currentChunkIndex >= chunks.size) {
+                currentChunkIndex = 0
+            }
+            
+            // Attempt to resume
             activePlayer.resume(_currentSpeed.value)
-            // If it didn't start playing (no source set), process queue
-            if (!_isPlaying.value) processQueue()
+            
+            // If it's System TTS, it doesn't support resume, so we must restart.
+            // For other players, if they failed to resume (e.g. source cleared), we process queue.
+            if (activeProvider == PreferenceManager.PROVIDER_SYSTEM || !activePlayer.isPlaying.value) {
+                processQueue()
+            }
         }
     }
 

@@ -45,6 +45,7 @@ fun MoreScreen(
     var showVoiceSheet by remember { mutableStateOf(false) }
     var showSpeedDialog by remember { mutableStateOf(false) }
     var showProviderDialog by remember { mutableStateOf(false) }
+    var showEngineDialog by remember { mutableStateOf(false) }
 
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val scope = rememberCoroutineScope()
@@ -74,6 +75,16 @@ fun MoreScreen(
                 },
                 onClick = { showProviderDialog = true }
             )
+
+            if (viewModel.currentProvider == PreferenceManager.PROVIDER_SYSTEM) {
+                val currentEngineName = viewModel.systemEngines.find { it.second == viewModel.currentSystemEngine }?.first ?: "System Default"
+                SettingsItem(
+                    icon = Icons.Default.GraphicEq, // Use a different icon if preferred
+                    title = "System Engine",
+                    subtitle = currentEngineName,
+                    onClick = { showEngineDialog = true }
+                )
+            }
 
             HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp))
 
@@ -165,6 +176,40 @@ fun MoreScreen(
             },
             confirmButton = {
                 androidx.compose.material3.TextButton(onClick = { showProviderDialog = false }) {
+                    Text("Cancel")
+                }
+            }
+        )
+    }
+
+    if (showEngineDialog) {
+        androidx.compose.material3.AlertDialog(
+            onDismissRequest = { showEngineDialog = false },
+            title = { Text("Select System TTS Engine") },
+            text = {
+                Column {
+                    ProviderOption(
+                        title = "System Default",
+                        isSelected = viewModel.currentSystemEngine == null,
+                        onClick = {
+                            viewModel.onSystemEngineChanged(null)
+                            showEngineDialog = false
+                        }
+                    )
+                    viewModel.systemEngines.forEach { (label, packageName) ->
+                        ProviderOption(
+                            title = label,
+                            isSelected = viewModel.currentSystemEngine == packageName,
+                            onClick = {
+                                viewModel.onSystemEngineChanged(packageName)
+                                showEngineDialog = false
+                            }
+                        )
+                    }
+                }
+            },
+            confirmButton = {
+                androidx.compose.material3.TextButton(onClick = { showEngineDialog = false }) {
                     Text("Cancel")
                 }
             }

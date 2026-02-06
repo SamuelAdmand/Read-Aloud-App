@@ -17,7 +17,7 @@ class TtsRepository(private val context: Context) {
 
     suspend fun getVoices(provider: String): List<Voice> {
         return when (provider) {
-            PreferenceManager.PROVIDER_SYSTEM -> getSystemVoices()
+            PreferenceManager.PROVIDER_SYSTEM -> getSystemVoices(PreferenceManager(context).systemTtsEngine)
             PreferenceManager.PROVIDER_EDGE -> getEdgeVoices()
             PreferenceManager.PROVIDER_GOOGLE -> getGoogleVoices()
             else -> emptyList()
@@ -43,7 +43,7 @@ class TtsRepository(private val context: Context) {
         }
     }
 
-    private fun getGoogleVoices(): List<Voice> {
+    fun getGoogleVoices(): List<Voice> {
         // Simplified: return common languages as Google TTS voices
         val languages = listOf(
             "en" to "English",
@@ -62,9 +62,31 @@ class TtsRepository(private val context: Context) {
         }
     }
 
-    private suspend fun getSystemVoices(): List<Voice> = suspendCancellableCoroutine { cont ->
+    suspend fun getSystemEngines(): List<Pair<String, String>> = suspendCancellableCoroutine { cont ->
         var tts: TextToSpeech? = null
         tts = TextToSpeech(context) { status ->
+            if (status == TextToSpeech.SUCCESS) {
+                try {
+                    val engines = tts?.engines?.map { engine ->
+                        engine.label to engine.name
+                    } ?: emptyList()
+                    if (cont.isActive) cont.resume(engines)
+                } catch (e: Exception) {
+                    Log.e("TtsRepository", "Error fetching system engines", e)
+                    if (cont.isActive) cont.resume(emptyList())
+                } finally {
+                    tts?.shutdown()
+                }
+            } else {
+                Log.e("TtsRepository", "Failed to initialize TTS for engine discovery")
+                if (cont.isActive) cont.resume(emptyList())
+            }
+        }
+    }
+
+    private suspend fun getSystemVoices(enginePackage: String?): List<Voice> = suspendCancellableCoroutine { cont ->
+        var tts: TextToSpeech? = null
+        tts = TextToSpeech(context, { status ->
             if (status == TextToSpeech.SUCCESS) {
                 try {
                     val voices = tts?.voices?.map { voice ->
@@ -87,7 +109,7 @@ class TtsRepository(private val context: Context) {
                 Log.e("TtsRepository", "Failed to initialize System TTS")
                 if (cont.isActive) cont.resume(emptyList())
             }
-        }
+        }, enginePackage)
     }
 
     suspend fun generateAudio(

@@ -8,8 +8,9 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import java.util.Locale
 
-class SystemTtsEngine(context: Context) {
-
+class SystemTtsEngine(private val context: Context) {
+    private var currentEnginePackage: String? = null
+    private var currentUtteranceId: String? = null
     private var tts: TextToSpeech? = null
     private var isInitialized = false
 
@@ -22,7 +23,12 @@ class SystemTtsEngine(context: Context) {
     val isEngineReady = _isEngineReady.asStateFlow()
 
     init {
-        tts = TextToSpeech(context.applicationContext) { status ->
+        initializeTts()
+    }
+
+    private fun initializeTts() {
+        shutdown()
+        tts = TextToSpeech(context.applicationContext, { status ->
             if (status == TextToSpeech.SUCCESS) {
                 isInitialized = true
                 _isEngineReady.value = true
@@ -30,7 +36,13 @@ class SystemTtsEngine(context: Context) {
             } else {
                 Log.e("SystemTtsEngine", "Failed to initialize System TTS")
             }
-        }
+        }, currentEnginePackage)
+    }
+
+    fun reInitialize(enginePackage: String?) {
+        if (currentEnginePackage == enginePackage) return
+        currentEnginePackage = enginePackage
+        initializeTts()
     }
 
     private fun setupListener() {
@@ -40,11 +52,13 @@ class SystemTtsEngine(context: Context) {
             }
 
             override fun onDone(utteranceId: String?) {
+                if (utteranceId != currentUtteranceId) return
                 onCompletionListener?.invoke()
             }
 
             // Newer API
             override fun onError(utteranceId: String?, errorCode: Int) {
+                if (utteranceId != currentUtteranceId) return
                 Log.e("SystemTtsEngine", "Error during playback: $utteranceId, Code: $errorCode")
                 onErrorListener?.invoke()
             }
@@ -52,11 +66,13 @@ class SystemTtsEngine(context: Context) {
             // Deprecated API
             @Deprecated("Deprecated in Java")
             override fun onError(utteranceId: String?) {
+                if (utteranceId != currentUtteranceId) return
                 Log.e("SystemTtsEngine", "Error during playback: $utteranceId")
                 onErrorListener?.invoke()
             }
 
             override fun onRangeStart(utteranceId: String?, start: Int, end: Int, frame: Int) {
+                if (utteranceId != currentUtteranceId) return
                 super.onRangeStart(utteranceId, start, end, frame)
                 onHighlightListener?.invoke(start, end)
             }
@@ -74,6 +90,7 @@ class SystemTtsEngine(context: Context) {
     }
 
     fun speak(text: String, voiceShortName: String, speed: Float) {
+        Log.d("SystemTtsEngine", "speak(textLength=${text.length}, voice=$voiceShortName, speed=$speed)")
         if (!isInitialized || tts == null) return
 
         // Set Voice
@@ -90,14 +107,18 @@ class SystemTtsEngine(context: Context) {
 
         // Speak
         // QUEUE_FLUSH drops all pending entries. Important for immediate playback.
+        val utteranceId = "id_${System.currentTimeMillis()}"
+        currentUtteranceId = utteranceId
+        
         val params = android.os.Bundle()
         // Request range events for highlighting
-        params.putString(TextToSpeech.Engine.KEY_PARAM_UTTERANCE_ID, "id_${System.currentTimeMillis()}")
+        params.putString(TextToSpeech.Engine.KEY_PARAM_UTTERANCE_ID, utteranceId)
 
-        tts?.speak(text, TextToSpeech.QUEUE_FLUSH, params, "id_${System.currentTimeMillis()}")
+        tts?.speak(text, TextToSpeech.QUEUE_FLUSH, params, utteranceId)
     }
 
     fun stop() {
+        currentUtteranceId = null
         tts?.stop()
     }
 

@@ -46,7 +46,10 @@ class SystemTtsAudioPlayer(private val engine: SystemTtsEngine) : AudioPlayer {
     }
 
     override fun play(source: AudioSource, speed: Float) {
-        if (source !is AudioSource.SystemText) return
+        if (source !is AudioSource.SystemText || source.text.isBlank()) {
+            _isPlaying.value = false
+            return
+        }
         
         _isPlaying.value = true
         _isLoading.value = false
@@ -59,9 +62,8 @@ class SystemTtsAudioPlayer(private val engine: SystemTtsEngine) : AudioPlayer {
     }
 
     override fun resume(speed: Float) {
-        // System TTS doesn't typically resume mid-buffer easily via the standard API
-        // This is often handled by the manager restarting the chunk.
-        _isPlaying.value = true
+        // System TTS doesn't support resuming. 
+        // TtsManager will call processQueue() if we stay in paused state.
     }
 
     override fun stop() {

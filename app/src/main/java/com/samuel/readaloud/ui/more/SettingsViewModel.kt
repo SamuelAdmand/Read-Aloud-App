@@ -9,6 +9,7 @@ import androidx.lifecycle.viewModelScope
 import com.samuel.readaloud.data.local.PreferenceManager
 import com.samuel.readaloud.model.Voice
 import com.samuel.readaloud.repository.TtsRepository
+import com.samuel.readaloud.domain.TtsManager
 import kotlinx.coroutines.launch
 import java.util.Locale
 
@@ -18,6 +19,12 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
     private val preferenceManager = PreferenceManager(application)
 
     var currentProvider by mutableStateOf(preferenceManager.ttsProvider)
+        private set
+
+    var systemEngines by mutableStateOf<List<Pair<String, String>>>(emptyList())
+        private set
+
+    var currentSystemEngine by mutableStateOf(preferenceManager.systemTtsEngine)
         private set
 
     // --- State ---
@@ -35,6 +42,13 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
 
     init {
         loadVoices()
+        loadSystemEngines()
+    }
+
+    private fun loadSystemEngines() {
+        viewModelScope.launch {
+            systemEngines = repository.getSystemEngines()
+        }
     }
 
     private fun loadVoices() {
@@ -114,6 +128,17 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
     fun onSpeedChanged(newSpeed: Float) {
         defaultSpeed = newSpeed
         preferenceManager.playbackSpeed = newSpeed
+    }
+
+    fun onSystemEngineChanged(enginePackage: String?) {
+        if (currentSystemEngine == enginePackage) return
+
+        currentSystemEngine = enginePackage
+        preferenceManager.systemTtsEngine = enginePackage
+        TtsManager.getInstance(getApplication()).updateSystemEngine(enginePackage)
+
+        // Reload voices for the new engine
+        loadVoices()
     }
 
     /**
