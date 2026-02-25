@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Description
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
@@ -35,16 +36,6 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.samuel.readaloud.domain.TtsManager
-import androidx.compose.animation.core.Animatable
-import androidx.compose.foundation.gestures.detectVerticalDragGestures
-import androidx.compose.foundation.layout.offset
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.unit.IntOffset
-import kotlinx.coroutines.launch
-import kotlin.math.roundToInt
 
 @Composable
 fun MiniPlayer(
@@ -56,17 +47,7 @@ fun MiniPlayer(
     val isPlaying by manager.isPlaying.collectAsState()
     val isLoading by manager.isLoading.collectAsState()
     val title by manager.currentTitle.collectAsState()
-// Animation state for swipe
-    val offsetY = remember { Animatable(0f) }
-    val scope = rememberCoroutineScope()
 
-    // ROBUSTNESS FIX: Ensure player becomes visible when playback starts
-    // This prevents the player from staying "swiped away" when a new track starts
-    LaunchedEffect(isPlaying, title) {
-        if (isPlaying) {
-            offsetY.animateTo(0f)
-        }
-    }
     // Only show if there is a title (implies active session)
     if (title.isBlank()) return
 
@@ -74,30 +55,6 @@ fun MiniPlayer(
         modifier = modifier
             .fillMaxWidth()
             .padding(horizontal = 8.dp, vertical = 4.dp)
-            // Apply offset based on drag
-            .offset { IntOffset(0, offsetY.value.roundToInt()) }
-            // Handle Swipe-to-Dismiss
-            .pointerInput(isPlaying) {
-                if (!isPlaying) {
-                    detectVerticalDragGestures(
-                        onDragEnd = {
-                            // Threshold to dismiss (approx 50-60dp)
-                            if (offsetY.value > 150f) {
-                                onDismiss()
-                            } else {
-                                // Reset position
-                                scope.launch { offsetY.animateTo(0f) }
-                            }
-                        },
-                        onVerticalDrag = { change, dragAmount ->
-                            change.consume()
-                            // Only allow dragging down (positive values)
-                            val newOffset = (offsetY.value + dragAmount).coerceAtLeast(0f)
-                            scope.launch { offsetY.snapTo(newOffset) }
-                        }
-                    )
-                }
-            }
             .clickable(onClick = onClick),
         shape = RoundedCornerShape(12.dp),
         color = MaterialTheme.colorScheme.surfaceContainerHighest, // Distinct background
@@ -147,10 +104,31 @@ fun MiniPlayer(
                 }
 
                 // Controls
-                IconButton(onClick = { manager.togglePlayPause() }) {
+                IconButton(
+                    onClick = { manager.togglePlayPause() },
+                    modifier = Modifier
+                        .size(40.dp)
+                        .clip(androidx.compose.foundation.shape.CircleShape)
+                        .background(MaterialTheme.colorScheme.secondaryContainer)
+                ) {
                     Icon(
                         imageVector = if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
-                        contentDescription = if (isPlaying) "Pause" else "Play"
+                        contentDescription = if (isPlaying) "Pause" else "Play",
+                        tint = MaterialTheme.colorScheme.onSecondaryContainer
+                    )
+                }
+                Spacer(modifier = Modifier.width(16.dp))
+                IconButton(
+                    onClick = onDismiss,
+                    modifier = Modifier
+                        .size(40.dp)
+                        .clip(androidx.compose.foundation.shape.CircleShape)
+                        .background(MaterialTheme.colorScheme.secondaryContainer)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Close,
+                        contentDescription = "Close",
+                        tint = MaterialTheme.colorScheme.onSecondaryContainer
                     )
                 }
             }

@@ -367,6 +367,8 @@ class TtsManager private constructor(
             chunks = emptyList()
             chunkOffsets.clear()
             cachedChunks.clear()
+            ContentRepository.updateContent("", "", null)
+            _currentTitle.value = ""
         }
         saveState()
     }

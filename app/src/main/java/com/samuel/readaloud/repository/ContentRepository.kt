@@ -17,8 +17,10 @@ object ContentRepository {
 
     fun updateContent(newText: String, newTitle: String = "", sourceUrl: String? = null) {
         _text.value = newText
-        _title.value = newTitle.ifBlank {
+        _title.value = if (newText.isNotBlank() && newTitle.isBlank()) {
             newText.take(50).replace("\n", " ").trim() + "..."
+        } else {
+            newTitle
         }
         _currentUrl = sourceUrl
     }
