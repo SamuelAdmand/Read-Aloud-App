@@ -242,14 +242,8 @@ fun MainScreen(intentSharedUrl: String? = null) {
             composable("player") {
                 PlayerScreen(
                     onBackClick = {
-                        // "Minimize": Navigate to Home
-                        navController.navigate("home") {
-                            popUpTo(navController.graph.findStartDestination().id) {
-                                saveState = true
-                            }
-                            launchSingleTop = true
-                            restoreState = true
-                        }
+                        // "Minimize": Navigate back to previous screen
+                        navController.popBackStack()
                     },
                     onEditClick = {
                         navController.navigate("type_text?editMode=true")
