@@ -29,6 +29,13 @@ class PreferenceManager(context: Context) {
         const val PROVIDER_EDGE = "edge"
         const val PROVIDER_GOOGLE = "google"
         const val PROVIDER_SYSTEM = "system"
+
+        // Playback State
+        private const val KEY_SAVED_TEXT = "saved_text"
+        private const val KEY_SAVED_TITLE = "saved_title"
+        private const val KEY_SAVED_SOURCE_URL = "saved_source_url"
+        private const val KEY_SAVED_VOICE_ID = "saved_voice_id"
+        private const val KEY_SAVED_GLOBAL_INDEX = "saved_global_index"
     }
     var ttsProvider: String
         get() = prefs.getString(KEY_TTS_PROVIDER, PROVIDER_EDGE) ?: PROVIDER_EDGE
@@ -89,5 +96,46 @@ class PreferenceManager(context: Context) {
         // Also update the global "current" voice so the rest of the app sees it immediately
         voiceId = id
         voiceName = name
+    }
+
+    // --- Playback State ---
+    var savedText: String?
+        get() = prefs.getString(KEY_SAVED_TEXT, null)
+        private set(value) = prefs.edit().putString(KEY_SAVED_TEXT, value).apply()
+
+    var savedTitle: String?
+        get() = prefs.getString(KEY_SAVED_TITLE, null)
+        private set(value) = prefs.edit().putString(KEY_SAVED_TITLE, value).apply()
+
+    var savedSourceUrl: String?
+        get() = prefs.getString(KEY_SAVED_SOURCE_URL, null)
+        private set(value) = prefs.edit().putString(KEY_SAVED_SOURCE_URL, value).apply()
+
+    var savedVoiceId: String?
+        get() = prefs.getString(KEY_SAVED_VOICE_ID, null)
+        private set(value) = prefs.edit().putString(KEY_SAVED_VOICE_ID, value).apply()
+
+    var savedGlobalIndex: Int
+        get() = prefs.getInt(KEY_SAVED_GLOBAL_INDEX, 0)
+        private set(value) = prefs.edit().putInt(KEY_SAVED_GLOBAL_INDEX, value).apply()
+
+    fun savePlaybackState(text: String, title: String, sourceUrl: String?, voiceId: String, globalIndex: Int) {
+        prefs.edit()
+            .putString(KEY_SAVED_TEXT, text)
+            .putString(KEY_SAVED_TITLE, title)
+            .putString(KEY_SAVED_SOURCE_URL, sourceUrl)
+            .putString(KEY_SAVED_VOICE_ID, voiceId)
+            .putInt(KEY_SAVED_GLOBAL_INDEX, globalIndex)
+            .apply()
+    }
+
+    fun clearPlaybackState() {
+        prefs.edit()
+            .remove(KEY_SAVED_TEXT)
+            .remove(KEY_SAVED_TITLE)
+            .remove(KEY_SAVED_SOURCE_URL)
+            .remove(KEY_SAVED_VOICE_ID)
+            .remove(KEY_SAVED_GLOBAL_INDEX)
+            .apply()
     }
 }

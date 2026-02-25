@@ -13,6 +13,8 @@ import com.samuel.readaloud.domain.player.SystemTtsAudioPlayer
 import com.samuel.readaloud.repository.ContentRepository
 import com.samuel.readaloud.repository.TtsRepository
 import com.samuel.readaloud.service.TtsMediaService
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -113,6 +115,50 @@ class TtsManager private constructor(
     init {
         setupPlayerStates()
         setupListeners()
+        restoreState()
+    }
+
+    private fun restoreState() {
+        val savedText = preferenceManager.savedText
+        val savedTitle = preferenceManager.savedTitle
+        val savedSourceUrl = preferenceManager.savedSourceUrl
+        val savedVoice = preferenceManager.savedVoiceId
+        val savedGlobalIndex = preferenceManager.savedGlobalIndex
+
+        if (savedText != null && savedVoice != null) {
+            ContentRepository.updateContent(savedText, savedTitle ?: "", savedSourceUrl)
+            _currentTitle.value = ContentRepository.getCurrentTitle()
+            voiceShortName = savedVoice
+            _currentVoiceId.value = savedVoice
+            
+            chunks = TextChunker.chunkText(savedText)
+            chunkOffsets.clear()
+            var runningOffset = 0
+            chunks.forEach { chunk ->
+                chunkOffsets.add(runningOffset)
+                runningOffset += chunk.length
+            }
+
+            val targetChunkIndex = chunkOffsets.indexOfLast { it <= savedGlobalIndex }
+            currentChunkIndex = if (targetChunkIndex >= 0) targetChunkIndex else 0
+            pendingSeekGlobalIndex = savedGlobalIndex
+            
+            // We just restore state, we don't automatically play. The user has to hit play.
+            // When play is hit, togglePlayPause() or processQueue() will handle the pendingSeekGlobalIndex
+        }
+    }
+
+    private fun saveState() {
+        if (chunks.isNotEmpty()) {
+            val text = ContentRepository.getCurrentText()
+            val title = ContentRepository.getCurrentTitle()
+            val sourceUrl = ContentRepository.getCurrentUrl()
+            val currentGlobalIndex = _currentHighlight.value?.start ?: chunkOffsets.getOrElse(currentChunkIndex) { 0 }
+            
+            preferenceManager.savePlaybackState(text, title, sourceUrl, voiceShortName, currentGlobalIndex)
+        } else {
+            preferenceManager.clearPlaybackState()
+        }
     }
 
     private fun setupPlayerStates() {
@@ -181,6 +227,7 @@ class TtsManager private constructor(
 
     private fun onChunkComplete() {
         currentChunkIndex++
+        saveState()
         processQueue()
     }
 
@@ -321,6 +368,7 @@ class TtsManager private constructor(
             chunkOffsets.clear()
             cachedChunks.clear()
         }
+        saveState()
     }
 
     private fun processQueue() {
@@ -385,7 +433,7 @@ class TtsManager private constructor(
                     ), _currentSpeed.value
                 )
             } else {
-                stop()
+                stop(clearContent = false)
             }
         }
     }
@@ -393,10 +441,14 @@ class TtsManager private constructor(
     private fun bufferNextChunks() {
         val start = currentChunkIndex + 1
         val end = (currentChunkIndex + 1 + BUFFER_SIZE).coerceAtMost(chunks.size)
-        for (i in start until end) {
-            if (!cachedChunks.containsKey(i) && !fetchingIndices.contains(i)) {
-                scope.launch(Dispatchers.IO) { getOrFetchChunk(i) }
-            }
+        // Launch a single coroutine to manage the concurrent fetches for this batch
+        scope.launch(Dispatchers.IO) {
+            val fetchJobs = (start until end)
+                .filter { i -> !cachedChunks.containsKey(i) && !fetchingIndices.contains(i) }
+                .map { i ->
+                    async { getOrFetchChunk(i) }
+                }
+            fetchJobs.awaitAll()
         }
     }
 
@@ -537,6 +589,7 @@ class TtsManager private constructor(
 
         if (currentlyPlaying) {
             activePlayer.pause()
+            saveState()
         } else {
             if (chunks.isEmpty()) {
                 _isPlaying.value = false
@@ -560,6 +613,9 @@ class TtsManager private constructor(
     }
 
     fun stop(clearContent: Boolean = true) {
+        if (!clearContent) {
+           saveState() 
+        }
         resetPlaybackState(clearContent)
         if (clearContent) {
             context.stopService(Intent(context, TtsMediaService::class.java))
