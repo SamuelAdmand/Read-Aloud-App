@@ -7,6 +7,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.rounded.KeyboardArrowDown
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilledTonalIconButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -26,6 +27,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.samuel.readaloud.data.local.PreferenceManager
 import com.samuel.readaloud.domain.TtsManager
@@ -79,14 +81,14 @@ fun PlayerScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Now Playing") },
+                title = { Text("Now Playing", fontWeight = FontWeight.Bold) },
                 navigationIcon = {
-                    IconButton(onClick = onBackClick) {
+                    FilledTonalIconButton(onClick = onBackClick) {
                         Icon(Icons.Rounded.KeyboardArrowDown, contentDescription = "Minimize")
                     }
                 },
                 actions = {
-                    IconButton(onClick = onEditClick) {
+                    FilledTonalIconButton(onClick = onEditClick) {
                         Icon(Icons.Filled.Edit, contentDescription = "Edit Text")
                     }
                 }
