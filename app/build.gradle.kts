@@ -9,8 +9,8 @@ val baseNamespace = "com.samuel.readaloud"
 val baseAppName = "Read Aloud"
 
 // --- Make changes to following code before commiting anything -----
-val myAppVersionCode = 5
-val appVersion = "1.2.2"
+val myAppVersionCode = 6
+val appVersion = "1.3.0"
 // --- End of the code ----
 
 android {
