@@ -6,6 +6,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Add
@@ -37,7 +38,8 @@ fun SpeedSelectionSheetContent(
     Column(
         modifier = Modifier
             .padding(horizontal = 24.dp)
-            .padding(bottom = 48.dp, top = 16.dp),
+            .padding(bottom = 48.dp, top = 16.dp)
+            .navigationBarsPadding(),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
         Text(

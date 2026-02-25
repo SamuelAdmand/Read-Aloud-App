@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -140,8 +141,8 @@ fun VoiceSelectionSheetContent(
 
     Column(
         modifier = Modifier
-            .fillMaxSize()
-            .padding(bottom = 16.dp) // Bottom padding
+            .fillMaxWidth()
+            .navigationBarsPadding()
     ) {
         // --- Header ---
         if (isSearching) {
@@ -241,8 +242,7 @@ fun VoiceSelectionSheetContent(
 
         // --- Main Content ---
         LazyColumn(
-            modifier = Modifier.weight(1f),
-            contentPadding = PaddingValues(bottom = 16.dp)
+            modifier = Modifier.weight(1f)
         ) {
             // 1. Recents Section
             if (recentVoices.isNotEmpty() && searchQuery.isBlank()) {
