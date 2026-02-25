@@ -30,10 +30,8 @@ import androidx.work.workDataOf
 import com.samuel.readaloud.data.local.PreferenceManager
 import com.samuel.readaloud.domain.TextChunker
 import com.samuel.readaloud.domain.TtsManager
-import com.samuel.readaloud.repository.LibraryRepository
 import com.samuel.readaloud.repository.UrlRepository
 import com.samuel.readaloud.ui.theme.ReadAloudTheme
-import com.samuel.readaloud.worker.DownloadWorker
 import java.util.regex.Pattern
 class ShareActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -56,7 +54,6 @@ class ShareActivity : ComponentActivity() {
                 var showDialog by remember { mutableStateOf(true) }
 
                 val urlRepository = remember { UrlRepository(applicationContext) }
-                val libraryRepository = remember { LibraryRepository(applicationContext) }
                 val ttsManager = remember { TtsManager.getInstance(applicationContext) }
                 val preferenceManager = remember { PreferenceManager(applicationContext) }
 
@@ -83,16 +80,6 @@ class ShareActivity : ComponentActivity() {
                                 }
                             ) {
                                 Text("Play")
-                            }
-                        },
-                        dismissButton = {
-                            TextButton(
-                                onClick = {
-                                    showDialog = false
-                                    action = ShareAction.SAVE
-                                }
-                            ) {
-                                Text("Save to Library")
                             }
                         }
                     )
@@ -138,37 +125,6 @@ class ShareActivity : ComponentActivity() {
                                         title = article.title,
                                         sourceUrl = article.sourceUrl
                                     )
-                                } else if (action == ShareAction.SAVE) {
-                                    // 1. Chunk the text for offline storage
-                                    val chunks = TextChunker.chunkText(article.text)
-
-                                    // 2. Save to database
-                                    val id = libraryRepository.upsertHistory(
-                                        title = article.title,
-                                        text = article.text,
-                                        sourceUrl = article.sourceUrl,
-                                        chunks = chunks
-                                    )
-
-                                    // 3. Mark as saved
-                                    libraryRepository.setSavedToLibrary(id, true)
-
-                                    // 4. Trigger Background Download
-                                    val workRequest = OneTimeWorkRequestBuilder<DownloadWorker>()
-                                        .setInputData(
-                                            workDataOf(
-                                                "articleId" to id,
-                                                "voiceName" to preferenceManager.voiceId
-                                            )
-                                        )
-                                        .build()
-                                    WorkManager.getInstance(applicationContext).enqueue(workRequest)
-
-                                    Toast.makeText(
-                                        this@ShareActivity,
-                                        "Saved to Library",
-                                        Toast.LENGTH_SHORT
-                                    ).show()
                                 }
                                 finish()
                             },
@@ -187,5 +143,5 @@ class ShareActivity : ComponentActivity() {
         }
     }
 
-    private enum class ShareAction { NONE, PLAY, SAVE }
+    private enum class ShareAction { NONE, PLAY }
 }

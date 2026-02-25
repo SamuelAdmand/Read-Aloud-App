@@ -2,7 +2,6 @@ plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
     alias(libs.plugins.kotlin.compose)
-    alias(libs.plugins.ksp)
 }
 
 // --- Dynamic Build Configuration ---
@@ -85,17 +84,6 @@ android {
     buildFeatures {
         compose = true
     }
-
-    sourceSets {
-        getByName("debug") {
-            java.srcDir("build/generated/ksp/debug/java")
-            java.srcDir("build/generated/ksp/debug/kotlin")
-        }
-        getByName("release") {
-            java.srcDir("build/generated/ksp/release/java")
-            java.srcDir("build/generated/ksp/release/kotlin")
-        }
-    }
 }
 
 dependencies {
@@ -129,10 +117,6 @@ dependencies {
     implementation("androidx.media:media:1.7.1")
     // Markdown Renderer
     implementation("com.mikepenz:multiplatform-markdown-renderer-android:0.38.1")
-    // Room Database
-    implementation("androidx.room:room-runtime:2.8.4")
-    implementation("androidx.room:room-ktx:2.8.4")
-    ksp("androidx.room:room-compiler:2.8.4")
 
     // WorkManager
     implementation("androidx.work:work-runtime-ktx:2.11.0")

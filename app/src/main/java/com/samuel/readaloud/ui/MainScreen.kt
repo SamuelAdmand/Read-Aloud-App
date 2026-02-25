@@ -54,7 +54,6 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import com.samuel.readaloud.ui.home.HomeScreen
-import com.samuel.readaloud.ui.library.LibraryScreen
 import com.samuel.readaloud.ui.more.MoreScreen
 import com.samuel.readaloud.ui.player.PlayerScreen
 import com.samuel.readaloud.ui.type.TypeScreen
@@ -74,15 +73,12 @@ import androidx.compose.material.icons.filled.History
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.navigation.NavType
 import androidx.navigation.navArgument
-import com.samuel.readaloud.ui.history.HistoryScreen
 import androidx.compose.runtime.LaunchedEffect
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun MainScreen(intentSharedUrl: String? = null) {
     val navController = rememberNavController()
-    var showBottomSheet by remember { mutableStateOf(false) }
-    val sheetState = rememberModalBottomSheetState()
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
     val urlRepository = remember { UrlRepository(context) }
@@ -161,38 +157,14 @@ fun MainScreen(intentSharedUrl: String? = null) {
                             modifier = Modifier.weight(1f)
                         )
 
-                        // 2. Center "Add" Button (Opens Bottom Sheet)
+                        // 2. Settings Item
                         NavigationBarItem(
-                            icon = {
-                                Box(
-                                    modifier = Modifier
-                                        .size(48.dp)
-                                        .clip(RoundedCornerShape(16.dp))
-                                        .background(MaterialTheme.colorScheme.primary),
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    Icon(
-                                        imageVector = Icons.Filled.Add,
-                                        contentDescription = "Create",
-                                        tint = MaterialTheme.colorScheme.onPrimary
-                                    )
-                                }
-                            },
-                            label = { /* No label for the center button */ },
-                            selected = false,
-                            onClick = { showBottomSheet = true },
-                            modifier = Modifier.weight(1f)
-                        )
-
-                        // 3. Library Item
-                        NavigationBarItem(
-                            icon = { Icon(Icons.Filled.Bookmarks, contentDescription = "Library") },
-                            label = { Text("Library") },
-                            selected = currentDestination?.hierarchy?.any { it.route == "library" } == true,
+                            icon = { Icon(Icons.Filled.Settings, contentDescription = "Settings") },
+                            label = { Text("Settings") },
+                            selected = currentDestination?.hierarchy?.any { it.route == "more" } == true,
                             onClick = {
-                                // Only navigate if we are NOT currently on the library screen
-                                if (currentDestination?.route != "library") {
-                                    navController.navigate("library") {
+                                if (currentDestination?.route != "more") {
+                                    navController.navigate("more") {
                                         popUpTo(navController.graph.findStartDestination().id) {
                                             saveState = true
                                         }
@@ -247,10 +219,6 @@ fun MainScreen(intentSharedUrl: String? = null) {
                     }
                 )
             }
-            composable("library") { LibraryScreen() }
-            composable("history") {
-                HistoryScreen(onBackClick = { navController.popBackStack() })
-            }
             composable("more") { MoreScreen() }
 
             composable(
@@ -290,88 +258,6 @@ fun MainScreen(intentSharedUrl: String? = null) {
             }
         }
 
-        // Bottom Sheet for "Create" Options
-        if (showBottomSheet) {
-            ModalBottomSheet(
-                onDismissRequest = { showBottomSheet = false },
-                sheetState = sheetState
-            ) {
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(bottom = 32.dp)
-                ) {
-                    Text(
-                        text = "Create",
-                        style = MaterialTheme.typography.titleLarge,
-                        fontWeight = FontWeight.Bold,
-                        modifier = Modifier.padding(horizontal = 24.dp, vertical = 16.dp)
-                    )
-
-                    // Menu Options
-                    CreateOptionItem(
-                        icon = Icons.Filled.Edit,
-                        label = "Type or paste Text",
-                        onClick = {
-                            scope.launch { sheetState.hide() }.invokeOnCompletion {
-                                showBottomSheet = false
-                                navController.navigate("type_text")
-                            }
-                        }
-                    )
-
-                    CreateOptionItem(
-                        icon = Icons.Filled.Link,
-                        label = "Paste link",
-                        onClick = {
-                            scope.launch { sheetState.hide() }.invokeOnCompletion {
-                                showBottomSheet = false
-                                showUrlDialog = true
-                            }
-                        }
-                    )
-
-                    CreateOptionItem(
-                        icon = Icons.Filled.FileOpen,
-                        label = "Import File",
-                        onClick = {
-                            // Placeholder
-                            scope.launch { sheetState.hide() }.invokeOnCompletion { showBottomSheet = false }
-                        }
-                    )
-                    Text(
-                        text = "Other",
-                        style = MaterialTheme.typography.titleLarge,
-                        fontWeight = FontWeight.Bold,
-                        modifier = Modifier.padding(horizontal = 24.dp, vertical = 16.dp)
-                    )
-
-                    // History
-                    CreateOptionItem(
-                        icon = Icons.Filled.History,
-                        label = "History",
-                        onClick = {
-                            scope.launch { sheetState.hide() }.invokeOnCompletion {
-                                showBottomSheet = false
-                                navController.navigate("history")
-                            }
-                        }
-                    )
-
-                    // Settings (Moved here)
-                    CreateOptionItem(
-                        icon = Icons.Filled.Settings,
-                        label = "Settings",
-                        onClick = {
-                            scope.launch { sheetState.hide() }.invokeOnCompletion {
-                                showBottomSheet = false
-                                navController.navigate("more")
-                            }
-                        }
-                    )
-                }
-            }
-        }
     }
     if (showUrlDialog) {
         UrlInputDialog(
@@ -417,57 +303,3 @@ fun MainScreen(intentSharedUrl: String? = null) {
     }
 }
 
-@Composable
-fun CreateOptionItem(
-    icon: ImageVector,
-    label: String,
-    isNew: Boolean = false,
-    onClick: () -> Unit
-) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clickable(onClick = onClick)
-            .padding(horizontal = 24.dp, vertical = 16.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        // Icon Box
-        Surface(
-            shape = RoundedCornerShape(12.dp),
-            color = MaterialTheme.colorScheme.surfaceContainerHigh,
-            modifier = Modifier.size(48.dp)
-        ) {
-            Box(contentAlignment = Alignment.Center) {
-                Icon(
-                    imageVector = icon,
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.onSurface
-                )
-            }
-        }
-
-        Spacer(modifier = Modifier.width(16.dp))
-
-        Text(
-            text = label,
-            style = MaterialTheme.typography.bodyLarge,
-            fontWeight = FontWeight.Medium,
-            modifier = Modifier.weight(1f)
-        )
-
-        if (isNew) {
-            Surface(
-                color = MaterialTheme.colorScheme.tertiaryContainer,
-                shape = RoundedCornerShape(4.dp),
-                modifier = Modifier.padding(start = 8.dp)
-            ) {
-                Text(
-                    text = "NEW",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onTertiaryContainer,
-                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
-                )
-            }
-        }
-    }
-}

@@ -56,7 +56,6 @@ fun PlayerScreen(
     val isLoading by ttsManager.isLoading.collectAsState()
     val currentTitle by ttsManager.currentTitle.collectAsState()
     val currentHighlight by ttsManager.currentHighlight.collectAsState()
-    val isSaved by ttsManager.isSaved.collectAsState()
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     var activeSheet by remember { mutableStateOf(PlayerSheetType.NONE) }
     val scope = rememberCoroutineScope()
@@ -87,12 +86,6 @@ fun PlayerScreen(
                     }
                 },
                 actions = {
-                    IconButton(onClick = { ttsManager.toggleLibrary() }) {
-                        Icon(
-                            imageVector = if (isSaved) Icons.Filled.Bookmark else Icons.Outlined.BookmarkBorder,
-                            contentDescription = if (isSaved) "Remove from Library" else "Save to Library"
-                        )
-                    }
                     IconButton(onClick = onEditClick) {
                         Icon(Icons.Filled.Edit, contentDescription = "Edit Text")
                     }

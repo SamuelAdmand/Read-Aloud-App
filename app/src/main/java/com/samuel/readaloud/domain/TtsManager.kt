@@ -11,13 +11,8 @@ import com.samuel.readaloud.domain.player.MediaPlayerAudioPlayer
 import com.samuel.readaloud.domain.player.SubtitleData
 import com.samuel.readaloud.domain.player.SystemTtsAudioPlayer
 import com.samuel.readaloud.repository.ContentRepository
-import com.samuel.readaloud.repository.LibraryRepository
 import com.samuel.readaloud.repository.TtsRepository
 import com.samuel.readaloud.service.TtsMediaService
-import com.samuel.readaloud.worker.DownloadWorker
-import androidx.work.OneTimeWorkRequestBuilder
-import androidx.work.WorkManager
-import androidx.work.workDataOf
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -51,12 +46,11 @@ class TtsManager private constructor(
     private val context: Context,
     private val repository: TtsRepository
 ) {
-    private val libraryRepository = LibraryRepository(context)
     private val preferenceManager = PreferenceManager(context)
     private val systemTtsEngine = SystemTtsEngine(context).apply {
         reInitialize(preferenceManager.systemTtsEngine)
     }
-    
+
     // Players
     private val filePlayer = MediaPlayerAudioPlayer()
     private val systemPlayer = SystemTtsAudioPlayer(systemTtsEngine)
@@ -65,7 +59,6 @@ class TtsManager private constructor(
     private var activeProvider = PreferenceManager.PROVIDER_EDGE
     private val _errorEvents = MutableSharedFlow<String>()
     val errorEvents = _errorEvents.asSharedFlow()
-    private var currentArticleId: Long = -1L
 
     companion object {
         @Volatile
@@ -100,9 +93,6 @@ class TtsManager private constructor(
     private val _isPlaying = MutableStateFlow(false)
     val isPlaying = _isPlaying.asStateFlow()
 
-    private val _isSaved = MutableStateFlow(false)
-    val isSaved = _isSaved.asStateFlow()
-
     private val _isLoading = MutableStateFlow(false)
     val isLoading = _isLoading.asStateFlow()
 
@@ -129,22 +119,34 @@ class TtsManager private constructor(
         scope.launch {
             // Collect from both players and update unified state based on which one is active
             launch {
-                filePlayer.isPlaying.collectLatest { if (activePlayer == filePlayer) _isPlaying.value = it }
+                filePlayer.isPlaying.collectLatest {
+                    if (activePlayer == filePlayer) _isPlaying.value = it
+                }
             }
             launch {
-                systemPlayer.isPlaying.collectLatest { if (activePlayer == systemPlayer) _isPlaying.value = it }
+                systemPlayer.isPlaying.collectLatest {
+                    if (activePlayer == systemPlayer) _isPlaying.value = it
+                }
             }
             launch {
-                filePlayer.isLoading.collectLatest { if (activePlayer == filePlayer) _isLoading.value = it }
+                filePlayer.isLoading.collectLatest {
+                    if (activePlayer == filePlayer) _isLoading.value = it
+                }
             }
             launch {
-                systemPlayer.isLoading.collectLatest { if (activePlayer == systemPlayer) _isLoading.value = it }
+                systemPlayer.isLoading.collectLatest {
+                    if (activePlayer == systemPlayer) _isLoading.value = it
+                }
             }
             launch {
-                filePlayer.currentHighlight.collectLatest { if (activePlayer == filePlayer) _currentHighlight.value = it }
+                filePlayer.currentHighlight.collectLatest {
+                    if (activePlayer == filePlayer) _currentHighlight.value = it
+                }
             }
             launch {
-                systemPlayer.currentHighlight.collectLatest { if (activePlayer == systemPlayer) _currentHighlight.value = it }
+                systemPlayer.currentHighlight.collectLatest {
+                    if (activePlayer == systemPlayer) _currentHighlight.value = it
+                }
             }
         }
     }
@@ -165,7 +167,12 @@ class TtsManager private constructor(
                     if (indexInRaw != -1) {
                         lastSystemTtsSearchIndex = indexInRaw
                         val globalOffset = chunkOffsets.getOrElse(currentChunkIndex) { 0 }
-                        systemPlayer.updateHighlight(HighlightRange(globalOffset + indexInRaw, globalOffset + indexInRaw + word.length))
+                        systemPlayer.updateHighlight(
+                            HighlightRange(
+                                globalOffset + indexInRaw,
+                                globalOffset + indexInRaw + word.length
+                            )
+                        )
                     }
                 }
             }
@@ -203,7 +210,8 @@ class TtsManager private constructor(
                 val chunk = cachedChunks[currentChunkIndex] ?: return
                 val subtitle = chunk.subtitles.find {
                     globalIndex >= it.globalRange.start && globalIndex < it.globalRange.end
-                } ?: chunk.subtitles.minByOrNull { kotlin.math.abs(it.globalRange.start - globalIndex) }
+                }
+                    ?: chunk.subtitles.minByOrNull { kotlin.math.abs(it.globalRange.start - globalIndex) }
                 subtitle?.let { activePlayer.seekTo(it.startMillis) }
                 return
             }
@@ -219,7 +227,7 @@ class TtsManager private constructor(
             onChunkComplete()
             return
         }
-        
+
         val currentChunk = cachedChunks[currentChunkIndex] ?: return
         // This logic is slightly complex to move into player without more refactoring,
         // so we'll keep the skip logic here using the player's internal knowledge if possible.
@@ -240,10 +248,11 @@ class TtsManager private constructor(
         resetPlaybackState(clearContent = true)
         val defaultSpeed = preferenceManager.playbackSpeed
         _currentSpeed.value = defaultSpeed
-        
+
         activeProvider = preferenceManager.ttsProvider
-        activePlayer = if (activeProvider == PreferenceManager.PROVIDER_SYSTEM) systemPlayer else filePlayer
-        
+        activePlayer =
+            if (activeProvider == PreferenceManager.PROVIDER_SYSTEM) systemPlayer else filePlayer
+
         ContentRepository.updateContent(text, title)
         _currentTitle.value = ContentRepository.getCurrentTitle()
 
@@ -261,11 +270,6 @@ class TtsManager private constructor(
 
         currentChunkIndex = 0
         scope.launch {
-            val finalTitle = title.ifBlank { ContentRepository.getCurrentTitle() }
-            currentArticleId = libraryRepository.upsertHistory(finalTitle, text, sourceUrl, chunks)
-            val article = libraryRepository.getArticleById(currentArticleId)
-            _isSaved.value = article?.isSavedToLibrary == true
-
             if (chunks.isNotEmpty()) {
                 processQueue()
             }
@@ -304,7 +308,7 @@ class TtsManager private constructor(
     private fun resetPlaybackState(clearContent: Boolean) {
         filePlayer.stop()
         systemPlayer.stop()
-        
+
         _isPlaying.value = false
         _isLoading.value = false
         _currentHighlight.value = null
@@ -325,12 +329,6 @@ class TtsManager private constructor(
             return
         }
 
-        if (currentArticleId != -1L) {
-            scope.launch(Dispatchers.IO) {
-                libraryRepository.updatePlaybackPosition(currentArticleId, currentChunkIndex)
-            }
-        }
-
         if (activeProvider == PreferenceManager.PROVIDER_SYSTEM) {
             processSystemQueue()
         } else {
@@ -342,8 +340,11 @@ class TtsManager private constructor(
         val rawText = chunks.getOrNull(currentChunkIndex) ?: return
         currentSanitizedChunk = TextChunker.sanitizeMarkdownForTts(rawText)
         lastSystemTtsSearchIndex = 0
-        
-        activePlayer.play(AudioSource.SystemText(currentSanitizedChunk, voiceShortName), _currentSpeed.value)
+
+        activePlayer.play(
+            AudioSource.SystemText(currentSanitizedChunk, voiceShortName),
+            _currentSpeed.value
+        )
     }
 
     private fun processFileQueue() {
@@ -373,10 +374,16 @@ class TtsManager private constructor(
                     pendingSeekGlobalIndex = null
                 }
 
-                val subtitleData = chunkData.subtitles.map { 
-                    SubtitleData(it.startMillis, it.endMillis, it.globalRange) 
+                val subtitleData = chunkData.subtitles.map {
+                    SubtitleData(it.startMillis, it.endMillis, it.globalRange)
                 }
-                activePlayer.play(AudioSource.LocalFile(chunkData.audioFile, subtitleData, startMillis), _currentSpeed.value)
+                activePlayer.play(
+                    AudioSource.LocalFile(
+                        chunkData.audioFile,
+                        subtitleData,
+                        startMillis
+                    ), _currentSpeed.value
+                )
             } else {
                 stop()
             }
@@ -406,11 +413,7 @@ class TtsManager private constructor(
         val ttsText = TextChunker.sanitizeMarkdownForTts(text)
         val audioDir = File(context.filesDir, "audio_cache").apply { mkdirs() }
         val voiceHash = targetVoice.hashCode()
-        val baseName = if (currentArticleId != -1L) {
-            "article_${currentArticleId}_v${voiceHash}_chunk_$index"
-        } else {
-            "temp_chunk_${text.hashCode()}_v${voiceHash}"
-        }
+        val baseName = "temp_chunk_${text.hashCode()}_v${voiceHash}"
         val currentProvider = preferenceManager.ttsProvider
         val outputFile = File(audioDir, "$baseName.mp3")
         val srtFile = File(audioDir, "$baseName.srt")
@@ -438,7 +441,14 @@ class TtsManager private constructor(
             val globalOffset = chunkOffsets.getOrElse(index) { 0 }
             val parsedSubtitles = parseSrt(srt, text, globalOffset)
             val subtitles = parsedSubtitles.ifEmpty {
-                listOf(Subtitle(0L, Long.MAX_VALUE, text, HighlightRange(globalOffset, globalOffset + text.length)))
+                listOf(
+                    Subtitle(
+                        0L,
+                        Long.MAX_VALUE,
+                        text,
+                        HighlightRange(globalOffset, globalOffset + text.length)
+                    )
+                )
             }
             val cachedChunk = CachedChunk(audio, subtitles, targetVoice)
             if (targetVoice == voiceShortName) cachedChunks[index] = cachedChunk
@@ -473,7 +483,8 @@ class TtsManager private constructor(
                         startIndex = textMatcher.start()
                         endIndex = textMatcher.end()
                     }
-                } catch (e: Exception) { }
+                } catch (e: Exception) {
+                }
                 if (startIndex == -1) {
                     startIndex = chunkText.indexOf(cleanText, searchIndex)
                     if (startIndex != -1) endIndex = startIndex + cleanText.length
@@ -481,7 +492,8 @@ class TtsManager private constructor(
                 if (startIndex == -1 && cleanText.isNotEmpty()) {
                     val firstFewWords = cleanText.split(" ").take(3).joinToString(" ")
                     startIndex = chunkText.indexOf(firstFewWords, searchIndex)
-                    if (startIndex != -1) endIndex = (startIndex + cleanText.length).coerceAtMost(chunkText.length)
+                    if (startIndex != -1) endIndex =
+                        (startIndex + cleanText.length).coerceAtMost(chunkText.length)
                 }
                 if (startIndex == -1) continue
                 while (endIndex < chunkText.length) {
@@ -489,9 +501,18 @@ class TtsManager private constructor(
                     if (nextChar in listOf('.', ',', '?', '!', ';', ':')) endIndex++ else break
                 }
                 searchIndex = endIndex
-                subtitles.add(Subtitle(startMillis, endMillis, cleanText, HighlightRange(chunkGlobalOffset + startIndex, chunkGlobalOffset + endIndex)))
+                subtitles.add(
+                    Subtitle(
+                        startMillis,
+                        endMillis,
+                        cleanText,
+                        HighlightRange(chunkGlobalOffset + startIndex, chunkGlobalOffset + endIndex)
+                    )
+                )
             }
-        } catch (e: Exception) { Log.e("TtsManager", "Error parsing SRT", e) }
+        } catch (e: Exception) {
+            Log.e("TtsManager", "Error parsing SRT", e)
+        }
         return subtitles
     }
 
@@ -505,14 +526,15 @@ class TtsManager private constructor(
                 val seconds = parts[2].toDouble()
                 return (hours * 3600000 + minutes * 60000 + seconds * 1000).toLong()
             }
-        } catch (e: Exception) { }
+        } catch (e: Exception) {
+        }
         return 0L
     }
 
     fun togglePlayPause() {
         val currentlyPlaying = activePlayer.isPlaying.value
         _isPlaying.value = !currentlyPlaying // Immediate UI feedback
-        
+
         if (currentlyPlaying) {
             activePlayer.pause()
         } else {
@@ -520,15 +542,15 @@ class TtsManager private constructor(
                 _isPlaying.value = false
                 return
             }
-            
+
             // If we've reached the end, restart from beginning
             if (currentChunkIndex >= chunks.size) {
                 currentChunkIndex = 0
             }
-            
+
             // Attempt to resume
             activePlayer.resume(_currentSpeed.value)
-            
+
             // If it's System TTS, it doesn't support resume, so we must restart.
             // For other players, if they failed to resume (e.g. source cleared), we process queue.
             if (activeProvider == PreferenceManager.PROVIDER_SYSTEM || !activePlayer.isPlaying.value) {
@@ -544,18 +566,5 @@ class TtsManager private constructor(
         }
     }
 
-    fun toggleLibrary() {
-        if (currentArticleId == -1L) return
-        scope.launch {
-            val newState = !_isSaved.value
-            libraryRepository.setSavedToLibrary(currentArticleId, newState)
-            _isSaved.value = newState
-            if (newState) {
-                val workRequest = OneTimeWorkRequestBuilder<DownloadWorker>()
-                    .setInputData(workDataOf("articleId" to currentArticleId, "voiceName" to voiceShortName))
-                    .build()
-                WorkManager.getInstance(context).enqueue(workRequest)
-            }
-        }
-    }
 }
+
