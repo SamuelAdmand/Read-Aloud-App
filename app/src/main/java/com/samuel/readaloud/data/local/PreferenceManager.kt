@@ -36,6 +36,14 @@ class PreferenceManager(context: Context) {
         private const val KEY_SAVED_SOURCE_URL = "saved_source_url"
         private const val KEY_SAVED_VOICE_ID = "saved_voice_id"
         private const val KEY_SAVED_GLOBAL_INDEX = "saved_global_index"
+        // Reader Appearance State
+        private const val KEY_READER_FONT_SIZE = "reader_font_size"
+        private const val KEY_READER_SERIF = "reader_serif"
+        private const val KEY_READER_LINE_SPACING = "reader_line_spacing"
+        private const val KEY_READER_AUTO_SCROLL = "reader_auto_scroll"
+
+        private const val DEFAULT_READER_FONT_SIZE = 18f
+        private const val DEFAULT_READER_LINE_SPACING = 1.55f
     }
     var ttsProvider: String
         get() = prefs.getString(KEY_TTS_PROVIDER, PROVIDER_EDGE) ?: PROVIDER_EDGE
@@ -56,6 +64,23 @@ class PreferenceManager(context: Context) {
     var playbackSpeed: Float
         get() = prefs.getFloat(KEY_PLAYBACK_SPEED, DEFAULT_SPEED)
         set(value) = prefs.edit().putFloat(KEY_PLAYBACK_SPEED, value).apply()
+
+    // --- Reader Settings ---
+    var readerFontSize: Float
+        get() = prefs.getFloat(KEY_READER_FONT_SIZE, DEFAULT_READER_FONT_SIZE)
+        set(value) = prefs.edit().putFloat(KEY_READER_FONT_SIZE, value).apply()
+
+    var readerSerif: Boolean
+        get() = prefs.getBoolean(KEY_READER_SERIF, false)
+        set(value) = prefs.edit().putBoolean(KEY_READER_SERIF, value).apply()
+
+    var readerLineSpacing: Float
+        get() = prefs.getFloat(KEY_READER_LINE_SPACING, DEFAULT_READER_LINE_SPACING)
+        set(value) = prefs.edit().putFloat(KEY_READER_LINE_SPACING, value).apply()
+
+    var readerAutoScroll: Boolean
+        get() = prefs.getBoolean(KEY_READER_AUTO_SCROLL, true)
+        set(value) = prefs.edit().putBoolean(KEY_READER_AUTO_SCROLL, value).apply()
 
     // --- Recents Logic ---
     fun getRecentVoiceIds(): List<String> {

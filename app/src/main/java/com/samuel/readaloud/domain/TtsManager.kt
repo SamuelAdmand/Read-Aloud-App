@@ -213,11 +213,12 @@ class TtsManager private constructor(
                     if (indexInRaw != -1) {
                         lastSystemTtsSearchIndex = indexInRaw
                         val globalOffset = chunkOffsets.getOrElse(currentChunkIndex) { 0 }
+                        var s = indexInRaw
+                        var e = indexInRaw + word.length
+                        while (s > 0 && rawChunk[s - 1] in listOf('(', '[', '{', '"', '“', '‘', '\'')) s--
+                        while (e < rawChunk.length && rawChunk[e] in listOf('.', ',', '!', '?', ';', ':', ')', ']', '}', '"', '”', '’', '\'', '—', '-')) e++
                         systemPlayer.updateHighlight(
-                            HighlightRange(
-                                globalOffset + indexInRaw,
-                                globalOffset + indexInRaw + word.length
-                            )
+                            HighlightRange(globalOffset + s, globalOffset + e)
                         )
                     }
                 }
@@ -467,8 +468,8 @@ class TtsManager private constructor(
         val ttsText = TextChunker.sanitizeMarkdownForTts(text)
         val audioDir = File(context.filesDir, "audio_cache").apply { mkdirs() }
         val voiceHash = targetVoice.hashCode()
-        val baseName = "temp_chunk_${text.hashCode()}_v${voiceHash}"
         val currentProvider = preferenceManager.ttsProvider
+        val baseName = "temp_chunk_${ttsText.hashCode()}_v${voiceHash}_${currentProvider}"
         val outputFile = File(audioDir, "$baseName.mp3")
         val srtFile = File(audioDir, "$baseName.srt")
 
@@ -529,6 +530,8 @@ class TtsManager private constructor(
                 val endMillis = parseTimestamp(endTimeStr)
                 var startIndex = -1
                 var endIndex = -1
+
+                // 1. Try full exact regex match first
                 try {
                     val escapedText = Pattern.quote(cleanText)
                     val regexPattern = escapedText.replace(" ", "\\E\\s+\\Q")
@@ -539,21 +542,67 @@ class TtsManager private constructor(
                     }
                 } catch (e: Exception) {
                 }
+
+                // 2. If chunkText contains markdown links [text](url) or extra markup not in cleanText:
+                // Locate boundaries using beginning words for startIndex and ending words for endIndex
+                if (startIndex == -1 || endIndex == -1) {
+                    val words = cleanText.split("\\s+".toRegex()).filter { it.isNotBlank() }
+                    if (words.isNotEmpty()) {
+                        // Find start index from the first words
+                        for (len in words.size.coerceAtMost(4) downTo 1) {
+                            val phrase = words.take(len).joinToString(" ")
+                            var idx = chunkText.indexOf(phrase, searchIndex)
+                            if (idx == -1) {
+                                val normChunk = normalizeForSearch(chunkText)
+                                val normPhrase = normalizeForSearch(phrase)
+                                idx = normChunk.indexOf(normPhrase, searchIndex)
+                            }
+                            if (idx != -1) {
+                                startIndex = idx
+                                break
+                            }
+                        }
+
+                        // Find end index from the last words starting from startIndex
+                        if (startIndex != -1) {
+                            for (len in words.size.coerceAtMost(4) downTo 1) {
+                                val lastPhrase = words.takeLast(len).joinToString(" ")
+                                var idx = chunkText.indexOf(lastPhrase, startIndex)
+                                if (idx == -1) {
+                                    val normChunk = normalizeForSearch(chunkText)
+                                    val normPhrase = normalizeForSearch(lastPhrase)
+                                    idx = normChunk.indexOf(normPhrase, startIndex)
+                                }
+                                if (idx != -1) {
+                                    endIndex = idx + lastPhrase.length
+                                    break
+                                }
+                            }
+                        }
+                    }
+                }
+
                 if (startIndex == -1) {
                     startIndex = chunkText.indexOf(cleanText, searchIndex)
                     if (startIndex != -1) endIndex = startIndex + cleanText.length
                 }
-                if (startIndex == -1 && cleanText.isNotEmpty()) {
-                    val firstFewWords = cleanText.split(" ").take(3).joinToString(" ")
-                    startIndex = chunkText.indexOf(firstFewWords, searchIndex)
-                    if (startIndex != -1) endIndex =
-                        (startIndex + cleanText.length).coerceAtMost(chunkText.length)
-                }
                 if (startIndex == -1) continue
-                while (endIndex < chunkText.length) {
-                    val nextChar = chunkText[endIndex]
-                    if (nextChar in listOf('.', ',', '?', '!', ';', ':')) endIndex++ else break
+                if (endIndex == -1 || endIndex < startIndex) {
+                    endIndex = (startIndex + cleanText.length).coerceAtMost(chunkText.length)
                 }
+
+                // Expand leading punctuation (opening brackets, quotes)
+                val leadingPunctuation = setOf('(', '[', '{', '"', '“', '‘', '\'')
+                while (startIndex > searchIndex && chunkText[startIndex - 1] in leadingPunctuation) {
+                    startIndex--
+                }
+
+                // Expand trailing punctuation (periods, commas, closing brackets, quotes, dashes)
+                val trailingPunctuation = setOf('.', ',', '?', '!', ';', ':', ')', ']', '}', '"', '”', '’', '\'', '—', '–', '-', '…')
+                while (endIndex < chunkText.length && chunkText[endIndex] in trailingPunctuation) {
+                    endIndex++
+                }
+
                 searchIndex = endIndex
                 subtitles.add(
                     Subtitle(
@@ -568,6 +617,16 @@ class TtsManager private constructor(
             Log.e("TtsManager", "Error parsing SRT", e)
         }
         return subtitles
+    }
+
+    private fun normalizeForSearch(s: String): String {
+        return s.replace('“', '"')
+            .replace('”', '"')
+            .replace('‘', '\'')
+            .replace('’', '\'')
+            .replace('—', '-')
+            .replace('–', '-')
+            .replace('\u00A0', ' ')
     }
 
     private fun parseTimestamp(timestamp: String?): Long {

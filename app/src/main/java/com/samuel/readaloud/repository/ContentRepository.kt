@@ -13,7 +13,9 @@ object ContentRepository {
 
     private val _text = MutableStateFlow("")
     val text = _text.asStateFlow()
-    private var _currentUrl: String? = null
+
+    private val _url = MutableStateFlow<String?>(null)
+    val url = _url.asStateFlow()
 
     fun updateContent(newText: String, newTitle: String = "", sourceUrl: String? = null) {
         _text.value = newText
@@ -22,10 +24,10 @@ object ContentRepository {
         } else {
             newTitle
         }
-        _currentUrl = sourceUrl
+        _url.value = sourceUrl
     }
 
     fun getCurrentText(): String = _text.value
     fun getCurrentTitle(): String = _title.value
-    fun getCurrentUrl(): String? = _currentUrl
+    fun getCurrentUrl(): String? = _url.value
 }

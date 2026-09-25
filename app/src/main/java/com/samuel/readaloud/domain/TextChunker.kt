@@ -2,6 +2,7 @@ package com.samuel.readaloud.domain
 
 import java.text.BreakIterator
 import java.util.Locale
+import java.util.regex.Pattern
 
 object TextChunker {
 
@@ -65,18 +66,108 @@ object TextChunker {
     }
 
     /**
-     * Removes markdown symbols that might interfere with TTS pronunciation,
-     * replacing them with spaces to preserve character count/offsets if needed.
+     * Removes markdown symbols, embedded URLs, and citation brackets that interfere
+     * with TTS pronunciation, replacing them with spaces of identical length to preserve
+     * exact character offsets for subtitle highlighting and seek positions.
      */
     fun sanitizeMarkdownForTts(text: String): String {
         val sb = StringBuilder(text)
+
+        // 1. Mask (url) in Markdown links [label](url) with spaces (handles nested parentheses like in Wikipedia URLs)
+        var searchFrom = 0
+        while (searchFrom < sb.length) {
+            val openBracket = sb.indexOf("[", searchFrom)
+            if (openBracket == -1) break
+            val linkSeparator = sb.indexOf("](", openBracket)
+            if (linkSeparator == -1) break
+
+            var parenDepth = 0
+            var closeParen = -1
+            for (i in (linkSeparator + 1) until sb.length) {
+                if (sb[i] == '(') {
+                    parenDepth++
+                } else if (sb[i] == ')') {
+                    parenDepth--
+                    if (parenDepth == 0) {
+                        closeParen = i
+                        break
+                    }
+                }
+            }
+
+            if (closeParen != -1) {
+                val label = sb.substring(openBracket + 1, linkSeparator).trim()
+                // If label itself is a citation (e.g. [3] or [[3]) or a raw web address, mask entire link
+                val isCitationLabel = label.matches(Regex("^\\[?\\s*\\d+\\s*\\]?$")) ||
+                    label.matches(Regex("^\\[?(?:edit|citation needed|note\\s*\\d+)\\]?$", RegexOption.IGNORE_CASE))
+                val isUrlLabel = label.startsWith("http://", ignoreCase = true) ||
+                    label.startsWith("https://", ignoreCase = true) ||
+                    label.startsWith("www.", ignoreCase = true) ||
+                    label.matches(Regex("^[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}(/.*)?$"))
+
+                if (isCitationLabel || isUrlLabel) {
+                    var startMask = openBracket
+                    if (startMask > 0 && sb[startMask - 1] == '[') startMask--
+                    for (i in startMask..closeParen) {
+                        sb.setCharAt(i, ' ')
+                    }
+                } else {
+                    // Only mask the `](url)` part with spaces, leaving the human-readable label intact
+                    for (i in (linkSeparator + 1)..closeParen) {
+                        sb.setCharAt(i, ' ')
+                    }
+                }
+                searchFrom = closeParen + 1
+            } else {
+                searchFrom = linkSeparator + 2
+            }
+        }
+
+        // 2. Mask raw standalone web URLs (https://... or http://... or www....) with spaces
+        val rawUrlPattern = Pattern.compile("(?:https?://|www\\.)\\S+")
+        val rawUrlMatcher = rawUrlPattern.matcher(sb)
+        while (rawUrlMatcher.find()) {
+            for (i in rawUrlMatcher.start() until rawUrlMatcher.end()) {
+                if (i in sb.indices) {
+                    sb.setCharAt(i, ' ')
+                }
+            }
+        }
+
+        // 3. Mask citation brackets like [1], [2], [14], [[3]], [edit] with spaces
+        val citePattern = Pattern.compile("\\[+\\s*(\\d+|edit|citation needed|note\\s*\\d+)\\s*\\]+", Pattern.CASE_INSENSITIVE)
+        val citeMatcher = citePattern.matcher(sb)
+        while (citeMatcher.find()) {
+            for (i in citeMatcher.start() until citeMatcher.end()) {
+                if (i in sb.indices) {
+                    sb.setCharAt(i, ' ')
+                }
+            }
+        }
+
+        // 4. Mask boilerplate preamble lines (datelines, read-times, promo lines) with spaces
+        val lines = sb.split("\n")
+        var lineStart = 0
+        for (line in lines) {
+            val trimmed = line.trim()
+            if (trimmed.matches(Regex("^(?:\\d+\\s*min(?:ute)?s?\\s*read\\b|read\\s*time\\b).*", RegexOption.IGNORE_CASE)) ||
+                trimmed.matches(Regex("^(?:First\\s+)?(?:published|updated|last\\s+modified)(?:\\s*on)?\\s*:.*", RegexOption.IGNORE_CASE)) ||
+                trimmed.matches(Regex("^(?:also\\s+read|read\\s+also|read\\s+more|must\\s+read|related\\s+story)\\s*:.*", RegexOption.IGNORE_CASE))) {
+                for (i in lineStart until (lineStart + line.length)) {
+                    if (i in sb.indices) sb.setCharAt(i, ' ')
+                }
+            }
+            lineStart += line.length + 1
+        }
+
+        // 5. Replace markdown syntax symbols with spaces
         for (i in sb.indices) {
             val c = sb[i]
-            // Replace common markdown syntax chars with space so TTS reads the text naturally
-            if (c == '#' || c == '*' || c == '_' || c == '`' || c == '>' || c == '[' || c == ']') {
+            if (c == '#' || c == '*' || c == '_' || c == '`' || c == '>' || c == '[' || c == ']' || c == '~') {
                 sb.setCharAt(i, ' ')
             }
         }
+
         return sb.toString()
     }
 }

@@ -130,7 +130,7 @@ fun MainScreen(
 
     Scaffold(
         bottomBar = {
-            if (currentRoute?.startsWith("type_text") != true && currentRoute != "player" && currentRoute != "extensions")  {
+            if (currentRoute?.startsWith("type_text") != true && currentRoute != "player") {
                 Column {
                     // Mini Player sits on top of the Navigation Bar
                     MiniPlayer(
@@ -226,12 +226,7 @@ fun MainScreen(
                 )
             }
             composable("more") {
-                MoreScreen(onExtensionsClick = { navController.navigate("extensions") })
-            }
-            composable("extensions") {
-                com.samuel.readaloud.ui.extension.ExtensionsScreen(
-                    onBackClick = { navController.popBackStack() }
-                )
+                MoreScreen()
             }
 
             composable(

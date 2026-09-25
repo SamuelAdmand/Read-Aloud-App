@@ -15,14 +15,20 @@ class ReadabilityExtractor : WebExtractor {
             val article = readability4J.parse()
 
             val title = article.title ?: "No Title"
-            val text = article.textContent ?: ""
+            val htmlContent = article.content ?: ""
+            val markdownText = if (htmlContent.isNotBlank()) {
+                HtmlToMarkdownConverter.convert(htmlContent)
+            } else {
+                article.textContent ?: ""
+            }
 
-            if (text.isNotBlank()) {
-                Result.success(Article(title = title, text = text, sourceUrl = url))
+            if (markdownText.isNotBlank()) {
+                Result.success(Article(title = title, text = markdownText, sourceUrl = url))
             } else {
                 // Fallback to Jsoup if Readability fails to find content
                 val doc = Jsoup.parse(html, url)
-                val bodyText = doc.body().text()
+                val bodyMarkdown = HtmlToMarkdownConverter.convert(doc.body().html())
+                val bodyText = if (bodyMarkdown.isNotBlank()) bodyMarkdown else doc.body().text()
                 if (bodyText.isNotBlank()) {
                     Result.success(Article(title = title, text = bodyText, sourceUrl = url))
                 } else {

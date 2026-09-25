@@ -1,7 +1,6 @@
 package com.samuel.readaloud.repository
 
 import android.content.Context
-import com.samuel.readaloud.domain.extension.ExtensionManager
 import com.samuel.readaloud.domain.extractor.ReadabilityExtractor
 import com.samuel.readaloud.model.Article
 import kotlinx.coroutines.Dispatchers
@@ -13,59 +12,46 @@ import java.util.concurrent.TimeUnit
 /**
  * Repository responsible for fetching and extracting web articles.
  *
- * Prioritizes dynamically loaded website extensions (SpotiFLAC style),
- * falling back to headless WebView rendering and native Readability4J heuristics.
+ * Employs a pure native, ultra-fast extraction pipeline:
+ * 1. Fast asynchronous HTML retrieval via OkHttp (~200ms).
+ * 2. In-memory heuristic DOM parsing via Mozilla Readability4J + HtmlToMarkdownConverter (~20ms).
+ * 3. Client-rendered SPA fallback via headless WebView only if initial HTML was blocked or empty.
  */
 class UrlRepository(private val context: Context) {
 
     private val userAgent = "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Mobile Safari/537.36"
-    private val extensionManager = ExtensionManager.getInstance(context)
     private val nativeExtractor = ReadabilityExtractor()
 
     private val client = OkHttpClient.Builder()
-        .connectTimeout(8, TimeUnit.SECONDS)
-        .readTimeout(10, TimeUnit.SECONDS)
-        .writeTimeout(8, TimeUnit.SECONDS)
+        .connectTimeout(6, TimeUnit.SECONDS)
+        .readTimeout(8, TimeUnit.SECONDS)
+        .writeTimeout(6, TimeUnit.SECONDS)
         .followRedirects(true)
         .followSslRedirects(true)
         .retryOnConnectionFailure(true)
         .build()
 
     suspend fun extractArticle(url: String): Result<Article> = withContext(Dispatchers.IO) {
-        // Strategy 1: Attempt fast HTML fetch with OkHttp
+        // Strategy 1: Instant pure-native fetch with OkHttp
         val okHttpHtml = fetchWithOkHttp(url)
 
-        // Strategy 2: If HTML is available, run matched dynamic extension or fast native Readability
         if (!okHttpHtml.isNullOrBlank()) {
-            val extensionResult = extensionManager.extractArticle(url, htmlFallback = okHttpHtml)
-            if (extensionResult.isSuccess) {
-                return@withContext extensionResult
-            }
-
-            // Strategy 3: Fast native Readability heuristic
             val nativeResult = nativeExtractor.extract(okHttpHtml, url)
             if (nativeResult.isSuccess) {
                 return@withContext nativeResult
             }
         }
 
-        // Strategy 4: Direct headless extension run (if OkHttp was blocked or site requires full browser cookies)
-        val directExtResult = extensionManager.extractArticle(url, htmlFallback = null)
-        if (directExtResult.isSuccess) {
-            return@withContext directExtResult
-        }
-
-        // Strategy 5: Deep Headless WebView Fallback (for complex client-rendered SPAs)
+        // Strategy 2: Deep Headless WebView Fallback (only for client-rendered JavaScript SPAs)
         try {
             val webViewHtmlResult = WebViewExtractor(context).getHtml(url)
             if (webViewHtmlResult.isSuccess) {
                 val webViewHtml = webViewHtmlResult.getOrNull()
                 if (!webViewHtml.isNullOrBlank()) {
-                    val fallbackExt = extensionManager.extractArticle(url, htmlFallback = webViewHtml)
-                    if (fallbackExt.isSuccess) {
-                        return@withContext fallbackExt
+                    val fallbackResult = nativeExtractor.extract(webViewHtml, url)
+                    if (fallbackResult.isSuccess) {
+                        return@withContext fallbackResult
                     }
-                    return@withContext nativeExtractor.extract(webViewHtml, url)
                 }
             }
         } catch (e: Exception) {

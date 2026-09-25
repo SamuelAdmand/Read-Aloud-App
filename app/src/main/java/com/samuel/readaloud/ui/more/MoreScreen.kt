@@ -37,13 +37,10 @@ import com.samuel.readaloud.ui.components.SpeedSelectionSheetContent
 import com.samuel.readaloud.ui.components.VoiceSelectionSheetContent
 import kotlinx.coroutines.launch
 
-import androidx.compose.material.icons.rounded.Extension
-
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun MoreScreen(
-    viewModel: SettingsViewModel = viewModel(),
-    onExtensionsClick: () -> Unit = {}
+    viewModel: SettingsViewModel = viewModel()
 ) {
     var showVoiceSheet by remember { mutableStateOf(false) }
     var showSpeedDialog by remember { mutableStateOf(false) }
@@ -107,17 +104,6 @@ fun MoreScreen(
                 title = "Default Speed",
                 subtitle = String.format("%sx", speed.toString().trimEnd('0').trimEnd('.')),
                 onClick = { showSpeedDialog = true }
-            )
-
-            HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp))
-
-            SettingsSectionTitle("Article Extraction")
-
-            SettingsItem(
-                icon = Icons.Rounded.Extension,
-                title = "Extensions",
-                subtitle = "Manage website scrapers & paywall extractors",
-                onClick = onExtensionsClick
             )
         }
     }
