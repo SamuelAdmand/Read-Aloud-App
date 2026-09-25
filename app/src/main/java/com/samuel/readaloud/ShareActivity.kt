@@ -6,6 +6,9 @@ import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.AlertDialog
@@ -86,17 +89,19 @@ class ShareActivity : ComponentActivity() {
                 }
 
                 if (action != ShareAction.NONE) {
-                    // Show a simple loading spinner
+                    // Show a styled loading dialog
                     Dialog(onDismissRequest = { }) {
                         Surface(
                             shape = RoundedCornerShape(16.dp),
                             color = MaterialTheme.colorScheme.surface
                         ) {
-                            Box(
-                                contentAlignment = Alignment.Center,
-                                modifier = Modifier.size(120.dp)
+                            Column(
+                                modifier = Modifier.padding(24.dp),
+                                horizontalAlignment = Alignment.CenterHorizontally
                             ) {
                                 CircularProgressIndicator()
+                                Spacer(modifier = Modifier.size(16.dp))
+                                Text("Extracting article...")
                             }
                         }
                     }
@@ -125,7 +130,13 @@ class ShareActivity : ComponentActivity() {
                                         title = article.title,
                                         sourceUrl = article.sourceUrl
                                     )
+                                    val mainIntent = Intent(this@ShareActivity, MainActivity::class.java).apply {
+                                        flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP
+                                        putExtra("open_player", true)
+                                    }
+                                    startActivity(mainIntent)
                                 }
+                                action = ShareAction.NONE
                                 finish()
                             },
                             onFailure = { e ->
@@ -134,6 +145,7 @@ class ShareActivity : ComponentActivity() {
                                     "Error: ${e.message}",
                                     Toast.LENGTH_LONG
                                 ).show()
+                                action = ShareAction.NONE
                                 finish()
                             }
                         )

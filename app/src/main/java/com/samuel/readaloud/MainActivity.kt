@@ -35,10 +35,11 @@ class MainActivity : ComponentActivity() {
         }
 
 
+        val openPlayer = intent?.getBooleanExtra("open_player", false) ?: false
         enableEdgeToEdge()
         setContent {
             ReadAloudTheme {
-                MainScreen()
+                MainScreen(startDestination = if (openPlayer) "player" else "home")
             }
         }
     }

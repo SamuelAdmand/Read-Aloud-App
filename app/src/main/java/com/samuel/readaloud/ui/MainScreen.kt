@@ -77,7 +77,10 @@ import androidx.compose.runtime.LaunchedEffect
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun MainScreen(intentSharedUrl: String? = null) {
+fun MainScreen(
+    intentSharedUrl: String? = null,
+    startDestination: String = "home"
+) {
     val navController = rememberNavController()
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
@@ -103,28 +106,31 @@ fun MainScreen(intentSharedUrl: String? = null) {
     val processUrl: (String) -> Unit = { url ->
         isExtracting = true
         scope.launch {
-            val result = urlRepository.extractArticle(url)
-            isExtracting = false
-            result.fold(
-                onSuccess = { article ->
-                    ttsManager.playText(
-                        text = article.text,
-                        voice = preferenceManager.voiceId,
-                        title = article.title,
-                        sourceUrl = url // Pass the URL here
-                    )
-                    navController.navigate("player")
-                },
-                onFailure = { e ->
-                    Toast.makeText(context, "Error: ${e.message}", Toast.LENGTH_LONG).show()
-                }
-            )
+            try {
+                val result = urlRepository.extractArticle(url)
+                result.fold(
+                    onSuccess = { article ->
+                        ttsManager.playText(
+                            text = article.text,
+                            voice = preferenceManager.voiceId,
+                            title = article.title,
+                            sourceUrl = url // Pass the URL here
+                        )
+                        navController.navigate("player")
+                    },
+                    onFailure = { e ->
+                        Toast.makeText(context, "Error: ${e.message}", Toast.LENGTH_LONG).show()
+                    }
+                )
+            } finally {
+                isExtracting = false
+            }
         }
     }
 
     Scaffold(
         bottomBar = {
-            if (currentRoute?.startsWith("type_text") != true && currentRoute != "player")  {
+            if (currentRoute?.startsWith("type_text") != true && currentRoute != "player" && currentRoute != "extensions")  {
                 Column {
                     // Mini Player sits on top of the Navigation Bar
                     MiniPlayer(
@@ -186,7 +192,7 @@ fun MainScreen(intentSharedUrl: String? = null) {
 
         NavHost(
             navController = navController,
-            startDestination = "home",
+            startDestination = startDestination,
             modifier = Modifier.padding(bottom = innerPadding.calculateBottomPadding()),
             enterTransition = { slideInHorizontally(initialOffsetX = { it }) },
             exitTransition = { slideOutHorizontally(targetOffsetX = { -it }) },
@@ -219,7 +225,14 @@ fun MainScreen(intentSharedUrl: String? = null) {
                     }
                 )
             }
-            composable("more") { MoreScreen() }
+            composable("more") {
+                MoreScreen(onExtensionsClick = { navController.navigate("extensions") })
+            }
+            composable("extensions") {
+                com.samuel.readaloud.ui.extension.ExtensionsScreen(
+                    onBackClick = { navController.popBackStack() }
+                )
+            }
 
             composable(
                 route = "type_text?editMode={editMode}",
@@ -264,21 +277,6 @@ fun MainScreen(intentSharedUrl: String? = null) {
     }
 
     if (isExtracting) {
-        // Simple overlay loading indicator
-        Box(
-            modifier = Modifier
-                .size(72.dp)
-                .clip(RoundedCornerShape(16.dp))
-                .background(MaterialTheme.colorScheme.surfaceContainerHighest)
-                .padding(16.dp), // Adjust position using alignment in a real Box scope if needed,
-            // but here we might need a Z-index wrapper.
-            // simpler: show a Toast or just rely on the fact the dialog closed.
-        ) {
-            // ideally this should be a Dialog or centered overlay.
-            // For now, let's use a non-blocking UI indication or a proper Dialog.
-        }
-
-        // Re-implementation as a blocking Dialog for safety
         androidx.compose.ui.window.Dialog(onDismissRequest = {}) {
             Surface(
                 shape = RoundedCornerShape(16.dp),
